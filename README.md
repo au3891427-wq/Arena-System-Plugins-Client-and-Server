@@ -37,8 +37,9 @@ Configure these repository secrets under **Settings â†’ Secrets and variables â†
 | --- | --- |
 | **TELEGRAM_BOT_TOKEN** | Token created by Telegram's @BotFather |
 | **TELEGRAM_CHAT_ID** | Numeric chat ID of the target Telegram group or channel |
+| **TELEGRAM_MESSAGE_THREAD_ID** (optional) | Forum topic ID when announcements should go to a specific topic |
 
-Add the bot to the target group. For a channel, grant it permission to post messages.
+Add the bot to the target group. For a channel, grant it permission to post messages. Leave TELEGRAM_MESSAGE_THREAD_ID unset for a normal group/channel chat; set it only when posting to a specific forum topic.
 
 ### Test the Telegram connection
 
