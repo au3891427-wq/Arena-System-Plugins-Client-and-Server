@@ -30,10 +30,12 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_MESSAGE_THREAD_ID: ${{ secrets.TELEGRAM_MESSAGE_THREAD_ID }}
         with:
           script: |
             const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
             const chatId = process.env.TELEGRAM_CHAT_ID?.trim();
+            const threadIdValue = process.env.TELEGRAM_MESSAGE_THREAD_ID?.trim();
 
             if (!token || !chatId) {
               throw new Error(
@@ -41,17 +43,30 @@ jobs:
               );
             }
 
+            let messageThreadId;
+            if (threadIdValue) {
+              messageThreadId = Number(threadIdValue);
+              if (!Number.isSafeInteger(messageThreadId) || messageThreadId <= 0) {
+                throw new Error("TELEGRAM_MESSAGE_THREAD_ID must be a positive integer.");
+              }
+            }
+
             const endpoint = "https://api.telegram.org/bot" + token + "/sendMessage";
 
             async function sendTelegramMessage(text) {
+              const body = {
+                chat_id: chatId,
+                text,
+                disable_web_page_preview: true
+              };
+              if (messageThreadId !== undefined) {
+                body.message_thread_id = messageThreadId;
+              }
+
               const response = await fetch(endpoint, {
                 method: "POST",
                 headers: { "content-type": "application/json" },
-                body: JSON.stringify({
-                  chat_id: chatId,
-                  text,
-                  disable_web_page_preview: true
-                })
+                body: JSON.stringify(body)
               });
 
               const result = await response.json().catch(() => null);
