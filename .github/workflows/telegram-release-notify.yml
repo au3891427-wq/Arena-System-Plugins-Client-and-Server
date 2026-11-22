@@ -1,0 +1,157 @@
+name: Telegram Release Announcer
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      test_message:
+        description: Send a test message to verify the Telegram bot configuration
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  announce:
+    name: Announce stable release
+    runs-on: ubuntu-latest
+    if: >-
+      (github.event_name == 'release' &&
+       github.event.action == 'published' &&
+       github.event.release.draft == false &&
+       github.event.release.prerelease == false) ||
+      (github.event_name == 'workflow_dispatch' && inputs.test_message == true)
+    steps:
+      - name: Send Telegram announcement
+        uses: actions/github-script@v9
+        env:
+          TELEGRAM_BOT_TOKEN: \${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: \${{ secrets.TELEGRAM_CHAT_ID }}
+        with:
+          script: |
+            const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+            const chatId = process.env.TELEGRAM_CHAT_ID?.trim();
+
+            if (!token || !chatId) {
+              throw new Error(
+                "Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID repository secret."
+              );
+            }
+
+            const endpoint = "https://api.telegram.org/bot" + token + "/sendMessage";
+
+            async function sendTelegramMessage(text) {
+              const response = await fetch(endpoint, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                  chat_id: chatId,
+                  text,
+                  disable_web_page_preview: true
+                })
+              });
+
+              const result = await response.json().catch(() => null);
+              if (!response.ok || !result?.ok) {
+                const reason = result?.description || ("HTTP " + response.status);
+                throw new Error("Telegram sendMessage failed: " + reason);
+              }
+
+              core.info("Telegram message sent. Message ID: " +
+                (result.result?.message_id ?? "unknown"));
+            }
+
+            if (context.eventName === "workflow_dispatch") {
+              const testText = [
+                "✅ ArenaSystem Update Bot is connected.",
+                "",
+                "This is a configuration test from GitHub Actions.",
+                "Stable releases will be announced here when they are published.",
+                "",
+                "Repository: https://github.com/" +
+                  context.repo.owner + "/" + context.repo.repo
+              ].join("\n");
+
+              await sendTelegramMessage(testText);
+              return;
+            }
+
+            const release = context.payload.release;
+            if (!release || release.draft || release.prerelease) {
+              core.info("Skipping draft or prerelease.");
+              return;
+            }
+
+            const cleanNotes = (release.body || "No release notes were provided.")
+              .replace(/\r\n/g, "\n")
+              .replace(/^\s*#{1,6}\s*/gm, "")
+              .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, "$1 ($2)")
+              .replace(/\*\*(.*?)\*\*/g, "$1")
+              .replace(/__(.*?)__/g, "$1")
+              .replaceAll(String.fromCharCode(96), "")
+              .replace(/^\s*[-*]\s+/gm, "• ")
+              .replace(/\n{3,}/g, "\n\n")
+              .trim();
+
+            const publishedAt = release.published_at
+              ? new Date(release.published_at).toISOString().replace("T", " ").slice(0, 16) + " UTC"
+              : "Not specified";
+
+            const assets = (release.assets || [])
+              .filter(asset => asset.state === "uploaded" && asset.browser_download_url)
+              .slice(0, 8)
+              .map(asset => "• " + asset.name + "\n  " + asset.browser_download_url);
+
+            const title = release.name || release.tag_name || "ArenaSystem update";
+            const version = release.tag_name || "Not specified";
+            const releaseUrl = release.html_url ||
+              ("https://github.com/" + context.repo.owner + "/" +
+                context.repo.repo + "/releases");
+
+            const prefix = [
+              "🚀 ARENASYSTEM — STABLE UPDATE",
+              "",
+              title,
+              "Version: " + version,
+              "Published: " + publishedAt,
+              "",
+              "Release notes:"
+            ].join("\n");
+
+            const downloads = assets.length
+              ? assets.join("\n")
+              : "No downloadable files were attached to this release.";
+
+            const suffix = [
+              "",
+              "",
+              "Open release:",
+              releaseUrl
+            ].join("\n");
+
+            const maxLength = 3900;
+            let notes = cleanNotes;
+            let message = prefix + "\n" + notes + "\n\nDownloads:\n" +
+              downloads + suffix;
+
+            if (message.length > maxLength) {
+              const fixedLength = message.length - notes.length;
+              const notesBudget = Math.max(0, maxLength - fixedLength - 1);
+              notes = Array.from(notes).slice(0, notesBudget).join("");
+              if (notes.length < cleanNotes.length) {
+                notes = notes.slice(0, Math.max(0, notes.length - 1)) + "…";
+              }
+              message = prefix + "\n" + notes + "\n\nDownloads:\n" +
+                downloads + suffix;
+            }
+
+            if (message.length > 4096) {
+              throw new Error(
+                "The release announcement is too long for Telegram. Shorten the release notes or reduce the number of release assets."
+              );
+            }
+
+            await sendTelegramMessage(message);
