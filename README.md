@@ -6,7 +6,7 @@ ArenaSystem combines a Paper server plugin and a Fabric client mod. The plugin m
 
 This repository is the distribution point for **stable ArenaSystem builds**.
 
-1. Open the [Releases page](../../releases).
+1. Open the [Releases page](https://github.com/au3891427-wq/Arena-System-Plugins-Client-and-Server/releases).
 2. Choose the latest release that is not marked as a prerelease.
 3. Download the artifact that matches your installation (Paper server plugin, Fabric client mod, or other explicitly listed supporting files).
 4. Follow the installation notes included with that release.
