@@ -100,8 +100,15 @@ jobs:
               ? new Date(release.published_at).toISOString().replace("T", " ").slice(0, 16) + " UTC"
               : "Not specified";
 
-            const assets = (release.assets || [])
-              .filter(asset => asset.state === "uploaded" && asset.browser_download_url)
+            const uploadedAssets = (release.assets || [])
+              .filter(asset => asset.state === "uploaded" && asset.browser_download_url);
+
+            if (!uploadedAssets.some(asset => /\.jar$/i.test(asset.name))) {
+              core.warning("Skipping announcement: this stable release has no uploaded JAR artifact.");
+              return;
+            }
+
+            const assets = uploadedAssets
               .slice(0, 8)
               .map(asset => "• " + asset.name + "\n  " + asset.browser_download_url);
 
