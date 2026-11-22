@@ -43,7 +43,7 @@ Add the bot to the target group. For a channel, grant it permission to post mess
 
 ### Test the Telegram connection
 
-After saving both secrets:
+After saving the two required secrets (and the optional topic ID, if used):
 
 1. Open the repository's **Actions** tab.
 2. Select **Telegram Release Announcer**.
