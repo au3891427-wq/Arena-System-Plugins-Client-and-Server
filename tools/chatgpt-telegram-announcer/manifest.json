@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "ArenaSystem Telegram Announcer",
+  "version": "1.0.0",
+  "description": "Kirim draft pengumuman dari percakapan ChatGPT ke topic Update Telegram ArenaSystem.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": [
+    "https://arenasystem-telegram-bot-production.up.railway.app/*"
+  ],
+  "action": {
+    "default_title": "Kirim pengumuman ArenaSystem",
+    "default_popup": "popup.html"
+  }
+}
