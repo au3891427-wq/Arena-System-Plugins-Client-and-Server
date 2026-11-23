@@ -16,7 +16,9 @@ class LocalAssistantTest {
 
         assertTrue(answer.contains("Paper"), answer);
         assertTrue(answer.contains("Fabric"), answer);
-        assertTrue(answer.contains("arenas"), answer);
+        assertTrue(answer.contains("arena"), answer);
+        assertTrue(answer.contains("Berdasarkan dokumentasi ArenaSystem"), answer);
+        assertTrue(answer.contains("pertandingan"), answer);
     }
 
     @Test
@@ -28,7 +30,7 @@ class LocalAssistantTest {
                 "Berapa damage dan cooldown skill Assassin?"
         );
 
-        assertTrue(answer.contains("does not yet contain confirmed descriptions"), answer);
+        assertTrue(answer.contains("belum memuat uraian"), answer);
     }
 
     @Test
@@ -37,7 +39,7 @@ class LocalAssistantTest {
 
         String answer = assistant.answer("test-chat:user:main", "Halo");
 
-        assertTrue(answer.contains("ArenaSystem Assistant"), answer);
+        assertTrue(answer.contains("Asisten ArenaSystem"), answer);
     }
 
     @Test
@@ -50,6 +52,20 @@ class LocalAssistantTest {
 
         String followUp = assistant.answer(key, "Bagaimana cara memasangnya?");
         assertTrue(followUp.contains("belum menemukan informasi yang cukup"), followUp);
+    }
+
+    @Test
+    void englishQuestionStillReceivesAnIndonesianAnswer() {
+        LocalAssistant assistant = new LocalAssistant();
+
+        String answer = assistant.answer(
+                "test-chat:user:english",
+                "Explain the main features of ArenaSystem"
+        );
+
+        assertTrue(answer.contains("Berdasarkan dokumentasi ArenaSystem"), answer);
+        assertTrue(answer.contains("plugin server Paper"), answer);
+        assertTrue(answer.contains("mod klien Fabric"), answer);
     }
 
     @Test
