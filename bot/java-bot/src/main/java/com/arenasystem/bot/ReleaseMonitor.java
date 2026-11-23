@@ -271,7 +271,7 @@ public final class ReleaseMonitor {
         return ComponentType.OTHER;
     }
 
-    private String buildMessage(List<PendingAsset> assets) {
+    static String buildMessage(List<PendingAsset> assets) {
         StringBuilder message = new StringBuilder()
                 .append("📦 ARENASYSTEM — UPDATE BARU TERSEDIA\n")
                 .append("Ada ").append(assets.size())
@@ -291,6 +291,15 @@ public final class ReleaseMonitor {
                 message.append("• ").append(pending.asset().name()).append("\n")
                         .append("  Rilis: ").append(release.name())
                         .append(" (").append(release.tag()).append(")\n");
+            }
+
+            if (type == ComponentType.MOD) {
+                message.append("\\nℹ️ MOD Client direncanakan akan dilengkapi updater otomatis.\\n")
+                        .append("Untuk saat ini, kalau ingin mengunduhnya langsung:\\n");
+                for (PendingAsset pending : groupedAssets) {
+                    message.append("• ").append(pending.asset().name()).append(":\\n")
+                            .append(pending.asset().downloadUrl()).append("\\n");
+                }
             }
         }
 
