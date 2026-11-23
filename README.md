@@ -15,17 +15,32 @@ Do not treat files from the development repository, test builds, draft releases,
 
 ## Publishing a stable release
 
-A maintainer publishes a stable release manually:
+A maintainer publishes stable server and client releases manually:
 
 1. Confirm that the plugin/mod build and its required compatibility checks have passed.
 2. Create a GitHub Release in this repository.
-3. Select or create the appropriate version tag.
-4. Attach the final, tested files (for example, the Paper plugin JAR and Fabric client JAR).
-5. Add release notes that describe changes, compatibility, and any required installation steps.
-6. Ensure at least one final JAR artifact is attached.
-7. Leave **Set as a pre-release** unchecked, then publish the release.
+3. Select or create the appropriate release tag.
+4. Attach the final, tested files and add release notes that describe changes, compatibility, and installation steps.
+5. Leave **Set as a pre-release** unchecked, then publish the release.
 
-Publishing a non-prerelease is the signal used by the Telegram announcer. The workflow does not compile the files or independently certify their stability; maintainers are responsible for validating the artifacts before publishing.
+Publishing a non-prerelease is the signal used by the Telegram announcer. This repository does not compile or independently certify uploaded binaries; maintainers remain responsible for validating them.
+
+### Automatic Fabric client updates
+
+The Fabric client updater reads the stable manifest from:
+
+`arstm-client0qb201-update-manifest.json`
+
+When a stable release is published, **Sync ArenaSystem Client Update Manifest** validates the release and updates this manifest on `main`. For a release that was already published before its JAR assets were attached, run the workflow manually:
+
+1. Open **Actions → Sync ArenaSystem Client Update Manifest**.
+2. Select **Run workflow**.
+3. Enter the exact release tag (for example, `Fabric`).
+4. Confirm the run succeeds and the manifest commit appears on `main`.
+
+A Fabric client release must contain exactly one client JAR named `ArenaSystem_Client-X.Y.Z.jar` and the updater helper `ArenaSystem_Client_Updater-0.1.0.jar`. The workflow reads the version and compatibility metadata from `fabric.mod.json`, calculates SHA-256 for both JARs, and writes the release tag and verified asset URLs into the manifest. It refuses prereleases, mismatched JAR metadata, duplicate/missing required assets, version downgrades, and replacing an existing stable version with different bytes.
+
+For a newly published stable Fabric release, manifest synchronization is automatic. The existing `Fabric` release can be synchronized manually after its required assets have been uploaded. Do not edit the generated manifest by hand.
 
 ## Telegram release announcements
 
