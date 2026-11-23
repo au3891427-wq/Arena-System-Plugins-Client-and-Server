@@ -27,6 +27,16 @@ A maintainer publishes a stable release manually:
 
 Publishing a non-prerelease is the signal used by the Telegram announcer. The workflow does not compile the files or independently certify their stability; maintainers are responsible for validating the artifacts before publishing.
 
+## Automatic Paper server update notifications
+
+The Paper server plugin does **not** download or install updates. It checks the stable server manifest at startup and every configured interval, then writes a warning to the server console when a newer version is available. Operators also see the notice in chat when they join, if they have operator status or the `arenasystem.admin` permission.
+
+The server manifest is `arenasystem-server-update-manifest.json`. It is generated from the published `Bukkit` release after the release contains exactly one versioned server JAR named `arenaSystem_Bukkit-X.Y.Z.jar` or `arenaSystem_Bukkit-X.Y.Z.N.jar`. The workflow inspects the JAR's `plugin.yml`, checks that the artifact name matches the plugin version, calculates SHA-256, and updates the manifest on `main`.
+
+For a newly published stable Bukkit/server release, synchronization is automatic. For the existing `Bukkit` release when its JAR is uploaded after publication, run **Actions → Sync ArenaSystem Server Update Manifest → Run workflow** and provide the exact release tag (`Bukkit`). The workflow refuses prereleases, malformed/mismatched JAR metadata, duplicate/missing server JARs, downgrade attempts, and replacing a stable version with different bytes.
+
+The plugin's `updates.enabled`, `updates.check-interval-hours`, and `updates.manifest-url` settings control the check. The default interval is six hours. A legacy default URL pointing to the development repository is migrated to the distribution manifest automatically; custom manifest URLs are preserved. Do not edit the generated manifest manually.
+
 ## Telegram release announcements
 
 The GitHub Actions workflow at **.github/workflows/telegram-release-notify.yml** sends a message to the configured Telegram chat when a non-draft, non-prerelease release is published. The announcement includes the release name, version tag, publication date, release notes, downloadable asset links, and the GitHub Release page. Releases without an uploaded JAR are skipped.
