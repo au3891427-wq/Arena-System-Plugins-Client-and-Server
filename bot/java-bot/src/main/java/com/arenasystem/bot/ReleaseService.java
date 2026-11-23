@@ -120,6 +120,15 @@ public final class ReleaseService {
      */
     public List<PublishedRelease> publishedStableReleases()
             throws IOException, InterruptedException {
+        return publishedStableReleases(false);
+    }
+
+    /**
+     * Revalidates published releases. A forced refresh skips the ETag so short
+     * announcement batching windows can observe assets uploaded moments ago.
+     */
+    public List<PublishedRelease> publishedStableReleases(boolean forceRefresh)
+            throws IOException, InterruptedException {
         String url = "https://api.github.com/repos/" + repository + "/releases?per_page=100";
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -130,7 +139,7 @@ public final class ReleaseService {
                 .GET();
 
         String etag = releasesEtag;
-        if (etag != null && publishedReleasesCache != null) {
+        if (!forceRefresh && etag != null && publishedReleasesCache != null) {
             requestBuilder.header("If-None-Match", etag);
         }
 
