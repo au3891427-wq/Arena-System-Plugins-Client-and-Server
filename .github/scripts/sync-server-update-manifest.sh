@@ -9,7 +9,7 @@ else
   release_tag="${INPUT_RELEASE_TAG:-}"
 fi
 
-if [[ "$release_tag" != "Bukkit" && ! "$release_tag" =~ ^arenasystem-server-v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+if [[ "$release_tag" != "Bukkit" ]]; then
   echo "::error::Only the stable Bukkit release or a versioned ArenaSystem server release can update this manifest."
   exit 1
 fi
