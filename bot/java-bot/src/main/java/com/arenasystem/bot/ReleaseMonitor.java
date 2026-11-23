@@ -40,6 +40,25 @@ public final class ReleaseMonitor {
 
     private MonitorState state;
 
+    private record PendingAsset(
+            ReleaseService.PublishedRelease release,
+            ReleaseService.ReleaseAsset asset
+    ) {}
+
+    private enum ComponentType {
+        MOD("🧩 MOD — CLIENT / FABRIC", "MOD"),
+        PLUGIN("🔌 PLUGIN — SERVER / BUKKIT", "PLUGIN"),
+        OTHER("📦 KOMPONEN LAIN", "FILE");
+
+        private final String sectionTitle;
+        private final String buttonLabel;
+
+        ComponentType(String sectionTitle, String buttonLabel) {
+            this.sectionTitle = sectionTitle;
+            this.buttonLabel = buttonLabel;
+        }
+    }
+
     private static final class MonitorState {
         private Long chatId;
         private Long threadId;
@@ -127,78 +146,124 @@ public final class ReleaseMonitor {
 
         List<ReleaseService.PublishedRelease> stableReleases =
                 releases.publishedStableReleases();
+        List<PendingAsset> pendingAssets = new ArrayList<>();
+        Set<Long> discoveredAssetIds = new LinkedHashSet<>();
 
+        // Collect all new JARs first, so one polling cycle creates one Telegram message.
         for (ReleaseService.PublishedRelease release : stableReleases) {
-            List<ReleaseService.ReleaseAsset> newAssets = new ArrayList<>();
             for (ReleaseService.ReleaseAsset asset : release.assets()) {
                 if (isPostPublicationJar(release, asset)
-                        && !processedSnapshot.contains(asset.id())) {
-                    newAssets.add(asset);
+                        && !processedSnapshot.contains(asset.id())
+                        && discoveredAssetIds.add(asset.id())) {
+                    pendingAssets.add(new PendingAsset(release, asset));
                 }
             }
+        }
 
-            if (newAssets.isEmpty()) {
+        if (pendingAssets.isEmpty()) {
+            return;
+        }
+
+        telegram.sendMessage(
+                chatId,
+                buildMessage(pendingAssets),
+                threadId,
+                buildKeyboard(pendingAssets)
+        );
+
+        synchronized (stateLock) {
+            for (PendingAsset pending : pendingAssets) {
+                state.processedAssetIds.add(pending.asset().id());
+            }
+            trimProcessedAssets();
+            persistState();
+        }
+
+        long releaseCount = pendingAssets.stream()
+                .map(pending -> pending.release().id())
+                .distinct()
+                .count();
+        LOGGER.log(System.Logger.Level.INFO,
+                "Announced " + pendingAssets.size() + " new JAR asset(s) across " +
+                        releaseCount + " release(s) in one Telegram message.");
+    }
+
+    static String componentLabel(ReleaseService.PublishedRelease release) {
+        return componentType(release).sectionTitle;
+    }
+
+    private static ComponentType componentType(
+            ReleaseService.PublishedRelease release
+    ) {
+        String tag = release.tag().toLowerCase(java.util.Locale.ROOT);
+        String name = release.name().toLowerCase(java.util.Locale.ROOT);
+
+        if (tag.contains("fabric") || tag.contains("mod") || name.contains("client")) {
+            return ComponentType.MOD;
+        }
+        if (tag.contains("bukkit") || tag.contains("paper")
+                || tag.contains("plugin") || name.contains("server")) {
+            return ComponentType.PLUGIN;
+        }
+        return ComponentType.OTHER;
+    }
+
+    private String buildMessage(List<PendingAsset> assets) {
+        StringBuilder message = new StringBuilder()
+                .append("📦 ARENASYSTEM — UPDATE BARU TERSEDIA\n")
+                .append("Ada ").append(assets.size())
+                .append(" file JAR baru:\n");
+
+        for (ComponentType type : ComponentType.values()) {
+            List<PendingAsset> groupedAssets = assets.stream()
+                    .filter(pending -> componentType(pending.release()) == type)
+                    .toList();
+            if (groupedAssets.isEmpty()) {
                 continue;
             }
 
-            telegram.sendMessage(
-                    chatId,
-                    buildMessage(release, newAssets),
-                    threadId,
-                    buildKeyboard(release, newAssets)
-            );
-
-            synchronized (stateLock) {
-                for (ReleaseService.ReleaseAsset asset : newAssets) {
-                    state.processedAssetIds.add(asset.id());
-                }
-                trimProcessedAssets();
-                persistState();
-                processedSnapshot = Set.copyOf(state.processedAssetIds);
+            message.append("\n").append(type.sectionTitle).append("\n");
+            for (PendingAsset pending : groupedAssets) {
+                ReleaseService.PublishedRelease release = pending.release();
+                message.append("• ").append(pending.asset().name()).append("\n")
+                        .append("  Rilis: ").append(release.name())
+                        .append(" (").append(release.tag()).append(")\n");
             }
-
-            LOGGER.log(System.Logger.Level.INFO,
-                    "Announced " + newAssets.size() + " new JAR asset(s) for release " +
-                            release.tag() + ".");
-        }
-    }
-
-    private String buildMessage(
-            ReleaseService.PublishedRelease release,
-            List<ReleaseService.ReleaseAsset> assets
-    ) {
-        StringBuilder message = new StringBuilder()
-                .append("📦 ARENASYSTEM — FILE JAR BARU TERSEDIA\n\n")
-                .append(release.name()).append("\n")
-                .append("Versi: ").append(release.tag()).append("\n")
-                .append("Diterbitkan: ").append(release.publishedAt()).append("\n\n")
-                .append("File yang baru diunggah:\n");
-
-        for (ReleaseService.ReleaseAsset asset : assets) {
-            message.append("• ").append(asset.name()).append("\n");
         }
 
-        message.append("\nUnduhan tersedia melalui tombol di bawah.");
+        message.append("\nUnduh file melalui tombol di bawah.");
         return message.toString();
     }
 
-    private ObjectNode buildKeyboard(
-            ReleaseService.PublishedRelease release,
-            List<ReleaseService.ReleaseAsset> assets
-    ) {
+    private ObjectNode buildKeyboard(List<PendingAsset> assets) {
         ArrayNode rows = mapper.createArrayNode();
-        for (ReleaseService.ReleaseAsset asset : assets.stream().limit(8).toList()) {
+
+        for (PendingAsset pending : assets.stream().limit(8).toList()) {
+            ComponentType type = componentType(pending.release());
             ArrayNode row = mapper.createArrayNode();
             row.add(mapper.createObjectNode()
-                    .put("text", "⬇️ " + clip(asset.name(), 48))
-                    .put("url", asset.downloadUrl()));
+                    .put("text", "⬇️ " + type.buttonLabel + ": "
+                            + clip(pending.asset().name(), 40))
+                    .put("url", pending.asset().downloadUrl()));
+            rows.add(row);
+        }
+
+        LinkedHashSet<Long> seenReleaseIds = new LinkedHashSet<>();
+        for (PendingAsset pending : assets) {
+            ReleaseService.PublishedRelease release = pending.release();
+            if (!seenReleaseIds.add(release.id())) {
+                continue;
+            }
+
+            ComponentType type = componentType(release);
+            ArrayNode row = mapper.createArrayNode();
+            row.add(mapper.createObjectNode()
+                    .put("text", "📝 Catatan " + type.buttonLabel)
+                    .put("url", release.htmlUrl()));
             rows.add(row);
         }
 
         ArrayNode finalRow = mapper.createArrayNode();
-        finalRow.add(mapper.createObjectNode()
-                .put("text", "📝 Catatan Perubahan")
-                .put("url", release.htmlUrl()));
         finalRow.add(mapper.createObjectNode()
                 .put("text", "📚 Semua Rilis")
                 .put("url", releases.releasesUrl()));
