@@ -321,7 +321,7 @@ public final class BotApplication {
     private void sendWelcome(long chatId, Long threadId) throws Exception {
         String text = String.join("\n",
                 "🛡️ ARENASYSTEM",
-                "OFFICIAL COMMUNITY ASSISTANT",
+                "ASISTEN KOMUNITAS RESMI",
                 "",
                 "Asisten komunitas untuk dokumentasi ArenaSystem, rilis stabil, dan unduhan.",
                 "",
@@ -379,11 +379,11 @@ public final class BotApplication {
         text.append("Published: ").append(formatDate(release.publishedAt())).append("\n");
 
         if (!downloadsOnly) {
-            text.append("\nRelease notes:\n");
-            String notes = release.notes().isBlank() ? "No release notes were provided." : release.notes();
+            text.append("\nCatatan rilis:\n");
+            String notes = release.notes().isBlank() ? "Catatan rilis belum tersedia." : release.notes();
             text.append(notes, 0, Math.min(notes.length(), 1800));
         } else {
-            text.append("\nAvailable JAR files:\n");
+            text.append("\nBerkas JAR tersedia:\n");
             for (ReleaseService.Asset asset : release.assets().stream().limit(8).toList()) {
                 text.append("• ").append(asset.name()).append("\n");
             }
@@ -399,10 +399,10 @@ public final class BotApplication {
         }
         ArrayNode finalRow = mapper.createArrayNode();
         finalRow.add(mapper.createObjectNode()
-                .put("text", "📝 Full Changelog")
+                .put("text", "📝 Catatan Perubahan")
                 .put("url", release.htmlUrl()));
         finalRow.add(mapper.createObjectNode()
-                .put("text", "📚 All Releases")
+                .put("text", "📚 Semua Rilis")
                 .put("url", releases.releasesUrl()));
         rows.add(finalRow);
 
@@ -470,12 +470,12 @@ public final class BotApplication {
     private ObjectNode mainMenuKeyboard() {
         ArrayNode rows = mapper.createArrayNode();
         rows.add(buttonRow(
-                button("📦 Latest Release", "menu:latest"),
-                button("⬇️ Downloads", "menu:downloads")
+                button("📦 Rilis Terbaru", "menu:latest"),
+                button("⬇️ Unduhan", "menu:downloads")
         ));
         rows.add(buttonRow(
-                button("🤖 Ask Assistant", "menu:ask"),
-                button("📚 Help Center", "menu:help")
+                button("🤖 Tanya Asisten", "menu:ask"),
+                button("📚 Pusat Bantuan", "menu:help")
         ));
         ObjectNode markup = mapper.createObjectNode();
         markup.set("inline_keyboard", rows);
@@ -490,7 +490,7 @@ public final class BotApplication {
         ));
         rows.add(buttonRow(
                 button("🤖 Ask Assistant", "menu:ask"),
-                button("🏠 Main Menu", "menu:home")
+                button("🏠 Menu Utama", "menu:home")
         ));
         ObjectNode markup = mapper.createObjectNode();
         markup.set("inline_keyboard", rows);
