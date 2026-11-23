@@ -3,39 +3,52 @@ name: Telegram Release Announcer
 on:
   release:
     types: [published]
+  # Release assets can be uploaded after publication. GitHub does not emit a
+  # release.published event for that upload, so periodically scan stable releases.
+  schedule:
+    - cron: "*/5 * * * *"
   workflow_dispatch:
     inputs:
       test_message:
-        description: Send a test message to verify the Telegram bot configuration
+        description: Send a test message instead of scanning releases
         required: true
         type: boolean
         default: true
 
 permissions:
-  contents: read
+  contents: write
+
+# Serialize scans so two runs cannot both announce the same release.
+concurrency:
+  group: telegram-release-announcer
+  cancel-in-progress: false
 
 jobs:
   announce:
-    name: Announce stable release
+    name: Announce stable releases with JAR assets
     runs-on: ubuntu-latest
     if: >-
       (github.event_name == 'release' &&
        github.event.action == 'published' &&
        github.event.release.draft == false &&
        github.event.release.prerelease == false) ||
-      (github.event_name == 'workflow_dispatch' && inputs.test_message == true)
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch'
     steps:
-      - name: Send Telegram announcement
+      - name: Scan releases and send Telegram announcements
         uses: actions/github-script@v9
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_MESSAGE_THREAD_ID: ${{ secrets.TELEGRAM_MESSAGE_THREAD_ID }}
+          TELEGRAM_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          TELEGRAM_TEST_MESSAGE: ${{ inputs.test_message }}
         with:
           script: |
             const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
             const chatId = process.env.TELEGRAM_CHAT_ID?.trim();
             const threadIdValue = process.env.TELEGRAM_MESSAGE_THREAD_ID?.trim();
+            const defaultBranch = process.env.TELEGRAM_DEFAULT_BRANCH || "main";
 
             if (!token || !chatId) {
               throw new Error(
@@ -59,6 +72,7 @@ jobs:
                 text,
                 disable_web_page_preview: true
               };
+
               if (messageThreadId !== undefined) {
                 body.message_thread_id = messageThreadId;
               }
@@ -78,16 +92,21 @@ jobs:
                 throw new Error("Telegram sendMessage failed: " + reason);
               }
 
-              core.info("Telegram message sent. Message ID: " +
-                (result.result?.message_id ?? "unknown"));
+              const messageId = result.result?.message_id ?? null;
+              core.info("Telegram message sent. Message ID: " + (messageId ?? "unknown"));
+              return messageId;
             }
 
-            if (context.eventName === "workflow_dispatch") {
+            // Preserve the existing manual Telegram connectivity test.
+            if (
+              context.eventName === "workflow_dispatch" &&
+              process.env.TELEGRAM_TEST_MESSAGE === "true"
+            ) {
               const testText = [
                 "✅ ArenaSystem Update Bot is connected.",
                 "",
                 "This is a configuration test from GitHub Actions.",
-                "Stable releases will be announced here when they are published.",
+                "Stable releases will be announced here when a JAR asset is available.",
                 "",
                 "Repository: https://github.com/" +
                   context.repo.owner + "/" + context.repo.repo
@@ -97,108 +116,214 @@ jobs:
               return;
             }
 
-            const release = context.payload.release;
-            if (!release || release.draft || release.prerelease) {
-              core.info("Skipping draft or prerelease.");
-              return;
-            }
-
-            const cleanNotes = (release.body || "No release notes were provided.")
-              .replace(/\r\n/g, "\n")
-              .replace(/^\s*#{1,6}\s*/gm, "")
-              .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, "$1 ($2)")
-              .replace(/\*\*(.*?)\*\*/g, "$1")
-              .replace(/__(.*?)__/g, "$1")
-              .replaceAll(String.fromCharCode(96), "")
-              .replace(/^\s*[-*]\s+/gm, "• ")
-              .replace(/\n{3,}/g, "\n\n")
-              .trim();
-
-            const publishedAt = release.published_at
-              ? new Date(release.published_at).toISOString().replace("T", " ").slice(0, 16) + " UTC"
-              : "Not specified";
-
-            const uploadedAssets = (release.assets || [])
-              .filter(asset => asset.state === "uploaded" && asset.browser_download_url);
-
-            if (!uploadedAssets.some(asset => /\.jar$/i.test(asset.name))) {
-              core.warning("Skipping announcement: this stable release has no uploaded JAR artifact.");
-              return;
-            }
-
-            const assets = uploadedAssets
-              .slice(0, 8)
-              .map(asset => "• " + asset.name + "\n  " + asset.browser_download_url);
-
-            const title = release.name || release.tag_name || "ArenaSystem update";
-            const version = release.tag_name || "Not specified";
-            const releaseUrl = release.html_url ||
-              ("https://github.com/" + context.repo.owner + "/" +
-                context.repo.repo + "/releases");
-
-            const prefix = [
-              "🚀 ARENASYSTEM — STABLE UPDATE",
-              "",
-              title,
-              "Version: " + version,
-              "Published: " + publishedAt,
-              "",
-              "Release notes:"
-            ].join("\n");
-
-            const downloads = assets.length
-              ? assets.join("\n")
-              : "No downloadable files were attached to this release.";
-
-            const suffix = [
-              "",
-              "",
-              "Open release:",
-              releaseUrl
-            ].join("\n");
-
-            const maxLength = 3900;
-            let notes = cleanNotes;
-            let message = prefix + "\n" + notes + "\n\nDownloads:\n" +
-              downloads + suffix;
-
-            if (message.length > maxLength) {
-              const fixedLength = message.length - notes.length;
-              const notesBudget = Math.max(0, maxLength - fixedLength - 1);
-              notes = Array.from(notes).slice(0, notesBudget).join("");
-              if (notes.length < cleanNotes.length) {
-                notes = notes.slice(0, Math.max(0, notes.length - 1)) + "…";
-              }
-              message = prefix + "\n" + notes + "\n\nDownloads:\n" +
-                downloads + suffix;
-            }
-
-            if (message.length > 4096) {
-              throw new Error(
-                "The release announcement is too long for Telegram. Shorten the release notes or reduce the number of release assets."
-              );
-            }
-
-            const releaseAssetsPage =
-              "https://github.com/" + context.repo.owner + "/" +
-              context.repo.repo + "/releases";
-
-            const jarButtons = uploadedAssets
-              .filter(asset => /\.jar$/i.test(asset.name))
-              .slice(0, 6)
-              .map(asset => [{
-                text: "⬇️ " + asset.name.slice(0, 50),
-                url: asset.browser_download_url
-              }]);
-
-            const replyMarkup = {
-              inline_keyboard: [
-                ...jarButtons,
-                [
-                  { text: "📝 Full Changelog", url: releaseUrl },
-                  { text: "📦 All Releases", url: releaseAssetsPage }
-                ]
-              ]
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const statePath = ".github/telegram-release-announcer-state.json";
+            const state = {
+              version: 1,
+              announced_releases: {}
             };
+            let stateSha = null;
 
-            await sendTelegramMessage(message, replyMarkup);
+            // The state file is committed to the default branch. A release ID is
+            // recorded only after Telegram confirms that the message was sent.
+            try {
+              const response = await github.rest.repos.getContent({
+                owner,
+                repo,
+                path: statePath,
+                ref: defaultBranch
+              });
+
+              const file = response.data;
+              if (!file || file.type !== "file" || !file.content) {
+                throw new Error("Announcement state file is not a readable file.");
+              }
+
+              const parsed = JSON.parse(
+                Buffer.from(file.content, file.encoding || "base64").toString("utf8")
+              );
+
+              if (
+                !parsed.announced_releases ||
+                typeof parsed.announced_releases !== "object" ||
+                Array.isArray(parsed.announced_releases)
+              ) {
+                throw new Error("Announcement state file has an invalid format.");
+              }
+
+              state.announced_releases = parsed.announced_releases;
+              stateSha = file.sha;
+            } catch (error) {
+              if (error.status !== 404) {
+                throw error;
+              }
+              core.info("Announcement state file does not exist yet; it will be created after the first successful announcement.");
+            }
+
+            async function persistAnnouncement(release, telegramMessageId) {
+              state.announced_releases[String(release.id)] = {
+                tag_name: release.tag_name,
+                name: release.name || release.tag_name,
+                release_url: release.html_url,
+                announced_at: new Date().toISOString(),
+                telegram_message_id: telegramMessageId
+              };
+
+              const params = {
+                owner,
+                repo,
+                path: statePath,
+                message: "chore: record Telegram announcement for " + release.tag_name,
+                content: Buffer.from(
+                  JSON.stringify(state, null, 2) + "\n",
+                  "utf8"
+                ).toString("base64"),
+                branch: defaultBranch
+              };
+
+              if (stateSha) {
+                params.sha = stateSha;
+              }
+
+              const update = await github.rest.repos.createOrUpdateFileContents(params);
+              stateSha = update.data.content?.sha || stateSha;
+              core.info("Recorded release " + release.tag_name + " as announced.");
+            }
+
+            const releases = await github.paginate(
+              github.rest.repos.listReleases,
+              { owner, repo, per_page: 100 }
+            );
+
+            const stableReleases = releases
+              .filter(release => !release.draft && !release.prerelease && release.published_at)
+              .sort((a, b) =>
+                new Date(a.published_at).getTime() - new Date(b.published_at).getTime()
+              );
+
+            let announcedCount = 0;
+
+            for (const release of stableReleases) {
+              const releaseId = String(release.id);
+
+              if (Object.prototype.hasOwnProperty.call(
+                state.announced_releases,
+                releaseId
+              )) {
+                continue;
+              }
+
+              const uploadedAssets = (release.assets || []).filter(asset =>
+                asset.state === "uploaded" && asset.browser_download_url
+              );
+              const jarAssets = uploadedAssets.filter(asset => /\.jar$/i.test(asset.name));
+
+              // Keep waiting for a JAR. The scheduled scan will pick it up after upload.
+              if (jarAssets.length === 0) {
+                core.info(
+                  "Release " + release.tag_name +
+                  " has no uploaded JAR yet; it will be checked again later."
+                );
+                continue;
+              }
+
+              const displayAssets = [
+                ...jarAssets,
+                ...uploadedAssets.filter(asset => !/\.jar$/i.test(asset.name))
+              ].slice(0, 8);
+
+              const cleanNotes = (release.body || "No release notes were provided.")
+                .replace(/\r\n/g, "\n")
+                .replace(/^\s*#{1,6}\s*/gm, "")
+                .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, "$1 ($2)")
+                .replace(/\*\*(.*?)\*\*/g, "$1")
+                .replace(/__(.*?)__/g, "$1")
+                .replaceAll(String.fromCharCode(96), "")
+                .replace(/^\s*[-*]\s+/gm, "• ")
+                .replace(/\n{3,}/g, "\n\n")
+                .trim();
+
+              const publishedAt = new Date(release.published_at)
+                .toISOString()
+                .replace("T", " ")
+                .slice(0, 16) + " UTC";
+
+              const title = release.name || release.tag_name || "ArenaSystem update";
+              const version = release.tag_name || "Not specified";
+              const releaseUrl = release.html_url ||
+                ("https://github.com/" + owner + "/" + repo + "/releases");
+
+              const prefix = [
+                "🚀 ARENASYSTEM — STABLE UPDATE",
+                "",
+                title,
+                "Version: " + version,
+                "Published: " + publishedAt,
+                "",
+                "Release notes:"
+              ].join("\n");
+
+              const downloads = displayAssets
+                .map(asset =>
+                  "• " + asset.name + "\n  " + asset.browser_download_url
+                )
+                .join("\n");
+
+              const suffix = [
+                "",
+                "",
+                "Open release:",
+                releaseUrl
+              ].join("\n");
+
+              const maxLength = 3900;
+              let notes = cleanNotes;
+              let message = prefix + "\n" + notes + "\n\nDownloads:\n" +
+                downloads + suffix;
+
+              if (message.length > maxLength) {
+                const fixedLength = message.length - notes.length;
+                const notesBudget = Math.max(0, maxLength - fixedLength - 1);
+                notes = Array.from(notes).slice(0, notesBudget).join("");
+                if (notes.length < cleanNotes.length) {
+                  notes = notes.slice(0, Math.max(0, notes.length - 1)) + "…";
+                }
+                message = prefix + "\n" + notes + "\n\nDownloads:\n" +
+                  downloads + suffix;
+              }
+
+              if (message.length > 4096) {
+                throw new Error(
+                  "The release announcement is too long for Telegram. Shorten the release notes or reduce the number of release assets."
+                );
+              }
+
+              const releaseAssetsPage =
+                "https://github.com/" + owner + "/" + repo + "/releases";
+
+              const jarButtons = jarAssets
+                .slice(0, 6)
+                .map(asset => [{
+                  text: "⬇️ " + asset.name.slice(0, 50),
+                  url: asset.browser_download_url
+                }]);
+
+              const replyMarkup = {
+                inline_keyboard: [
+                  ...jarButtons,
+                  [
+                    { text: "📝 Full Changelog", url: releaseUrl },
+                    { text: "📦 All Releases", url: releaseAssetsPage }
+                  ]
+                ]
+              };
+
+              const telegramMessageId = await sendTelegramMessage(message, replyMarkup);
+              await persistAnnouncement(release, telegramMessageId);
+              announcedCount += 1;
+            }
+
+            core.info(
+              "Release scan complete. New announcements sent: " + announcedCount
+            );
