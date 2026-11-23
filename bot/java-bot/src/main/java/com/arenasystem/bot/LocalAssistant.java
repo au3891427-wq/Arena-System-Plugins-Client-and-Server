@@ -130,7 +130,7 @@ public final class LocalAssistant {
     private String findAnswer(String question) {
         String cleaned = normalize(question);
         if (isGreeting(cleaned)) {
-            return "Halo! Aku ArenaSystem Assistant. Aku bisa membantu menjelaskan dokumentasi, komponen server/client, handshake, update, dan rilis stabil ArenaSystem.\n\nCoba tanyakan: Apa saja fitur utama ArenaSystem?";
+            return "Halo! Aku Asisten ArenaSystem. Aku bisa membantu menjelaskan dokumentasi, komponen server/client, handshake, update, dan rilis stabil ArenaSystem.\n\nCoba tanyakan: Apa saja fitur utama ArenaSystem?";
         }
 
         List<String> originalTerms = tokenize(cleaned);
@@ -150,7 +150,7 @@ public final class LocalAssistant {
                 .limit(3)
                 .toList();
 
-        StringBuilder answer = new StringBuilder("🛡️ ARENASYSTEM ASSISTANT\n\n");
+        StringBuilder answer = new StringBuilder("🛡️ ASISTEN ARENASYSTEM\n\n");
         answer.append("Berdasarkan dokumentasi ArenaSystem yang tersedia:\n\n");
 
         for (int index = 0; index < selected.size(); index++) {
