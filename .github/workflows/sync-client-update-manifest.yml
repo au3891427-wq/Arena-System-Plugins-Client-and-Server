@@ -1,0 +1,140 @@
+name: Sync ArenaSystem Client Update Manifest
+
+on:
+  release:
+    types: [published]
+  pull_request:
+    paths:
+      - ".github/workflows/sync-client-update-manifest.yml"
+      - ".github/scripts/sync-client-update-manifest.sh"
+      - "README.md"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing stable Fabric release tag to sync (for example Fabric)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate workflow and manifest script
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check manifest sync script syntax
+        run: bash -n .github/scripts/sync-client-update-manifest.sh
+      - name: Exercise manifest generation without publishing
+        shell: bash
+        env:
+          GH_TOKEN: ci-test-token
+          GITHUB_REPOSITORY: au3891427-wq/Arena-System-Plugins-Client-and-Server
+          EVENT_NAME: workflow_dispatch
+          INPUT_RELEASE_TAG: Fabric
+          DRY_RUN: "true"
+        run: |
+          set -euo pipefail
+          test_root="$RUNNER_TEMP/arenasystem-manifest-test"
+          asset_dir="$test_root/assets"
+          mock_bin="$test_root/bin"
+          jar_root="$test_root/jar"
+          mkdir -p "$asset_dir" "$mock_bin" "$jar_root"
+
+          cat > "$jar_root/fabric.mod.json" <<'JSON'
+          {
+            "id": "arstm_client0qb201",
+            "version": "0.2.0",
+            "depends": {
+              "minecraft": "=26.3",
+              "fabricloader": ">=0.20.1",
+              "java": ">=25"
+            }
+          }
+          JSON
+          (cd "$jar_root" && zip -q "$asset_dir/ArenaSystem_Client-0.2.0.jar" fabric.mod.json)
+          printf 'stub updater helper' > "$asset_dir/ArenaSystem_Client_Updater-0.1.0.jar"
+
+          cat > "$mock_bin/gh" <<'MOCK'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ "$1" == "release" && "$2" == "view" ]]; then
+            cat <<'JSON'
+          {
+            "tagName": "Fabric",
+            "isDraft": false,
+            "isPrerelease": false,
+            "assets": [
+              {"name": "ArenaSystem_Client-0.2.0.jar"},
+              {"name": "ArenaSystem_Client_Updater-0.1.0.jar"}
+            ]
+          }
+          JSON
+          elif [[ "$1" == "release" && "$2" == "download" ]]; then
+            destination=""
+            while (($#)); do
+              if [[ "$1" == "--dir" ]]; then
+                destination="$2"
+                shift 2
+              else
+                shift
+              fi
+            done
+            mkdir -p "$destination"
+            cp "$TEST_ASSET_DIR/ArenaSystem_Client-0.2.0.jar" "$destination/"
+            cp "$TEST_ASSET_DIR/ArenaSystem_Client_Updater-0.1.0.jar" "$destination/"
+          else
+            echo "Unexpected gh command: $*" >&2
+            exit 2
+          fi
+          MOCK
+          chmod +x "$mock_bin/gh"
+          export TEST_ASSET_DIR="$asset_dir"
+          export PATH="$mock_bin:$PATH"
+
+          bash .github/scripts/sync-client-update-manifest.sh
+
+          expected_client_hash="$(sha256sum "$asset_dir/ArenaSystem_Client-0.2.0.jar" | cut -d ' ' -f 1)"
+          expected_helper_hash="$(sha256sum "$asset_dir/ArenaSystem_Client_Updater-0.1.0.jar" | cut -d ' ' -f 1)"
+          jq -e --arg clientHash "$expected_client_hash" \
+                --arg helperHash "$expected_helper_hash" \
+                '.version == "0.2.0" and
+                 .releaseTag == "Fabric" and
+                 .minecraft == "26.3" and
+                 .loaderVersion == "0.20.1" and
+                 .sha256 == $clientHash and
+                 .helperSha256 == $helperHash' \
+                arstm-client0qb201-update-manifest.json >/dev/null
+      - name: Parse workflow YAML
+        run: ruby -e 'require "yaml"; YAML.load_file(".github/workflows/sync-client-update-manifest.yml"); puts "Workflow YAML parsed successfully."'
+
+  sync-client-manifest:
+    name: Verify release assets and publish update manifest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'release' &&
+       github.event.action == 'published' &&
+       github.event.release.draft == false &&
+       github.event.release.prerelease == false &&
+       (github.event.release.tag_name == 'Fabric' ||
+        startsWith(github.event.release.tag_name, 'assassin-client-v')))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out distribution main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Verify client release assets and update manifest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+        run: bash .github/scripts/sync-client-update-manifest.sh
