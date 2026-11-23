@@ -31,6 +31,9 @@ const HISTORY_TTL_MS = 30 * 60 * 1000;
 const MAX_HISTORY_MESSAGES = 10;
 const MAX_QUESTION_LENGTH = 1500;
 const AI_REQUESTS_PER_MINUTE = 5;
+const AI_GLOBAL_REQUESTS_PER_MINUTE = 20;
+const AI_GLOBAL_REQUESTS_PER_DAY = 300;
+const globalRequestTimes = [];
 const WEBHOOK_PATH = "/telegram/webhook";
 const RELEASES_URL = "https://github.com/" + config.githubRepository + "/releases";
 
@@ -245,17 +248,36 @@ function trimExpiredState() {
 
 function consumeAiRateLimit(userId) {
   const now = Date.now();
-  const recent = (requestTimes.get(String(userId)) || [])
+  const userRecent = (requestTimes.get(String(userId)) || [])
+    .filter((timestamp) => now - timestamp < 60000);
+  const globalMinuteRecent = globalRequestTimes
     .filter((timestamp) => now - timestamp < 60000);
 
-  if (recent.length >= AI_REQUESTS_PER_MINUTE) {
-    requestTimes.set(String(userId), recent);
-    return false;
+  if (userRecent.length >= AI_REQUESTS_PER_MINUTE) {
+    requestTimes.set(String(userId), userRecent);
+    return "You have reached your personal AI request limit. Please wait a minute.";
   }
 
-  recent.push(now);
-  requestTimes.set(String(userId), recent);
-  return true;
+  if (globalMinuteRecent.length >= AI_GLOBAL_REQUESTS_PER_MINUTE) {
+    return "ArenaSystem AI is busy right now. Please try again in a minute.";
+  }
+
+  const globalDayCount = globalRequestTimes
+    .filter((timestamp) => now - timestamp < 24 * 60 * 60 * 1000).length;
+
+  if (globalDayCount >= AI_GLOBAL_REQUESTS_PER_DAY) {
+    return "The community AI daily limit has been reached. Please try again tomorrow.";
+  }
+
+  userRecent.push(now);
+  requestTimes.set(String(userId), userRecent);
+  globalRequestTimes.push(now);
+
+  while (globalRequestTimes.length > AI_GLOBAL_REQUESTS_PER_DAY + 100) {
+    globalRequestTimes.shift();
+  }
+
+  return null;
 }
 
 async function answerWithAI(message, question) {
@@ -279,12 +301,9 @@ async function answerWithAI(message, question) {
     );
   }
 
-  if (!consumeAiRateLimit(userId)) {
-    return reply(
-      chatId,
-      "You've reached the AI request limit. Please wait a minute before asking again.",
-      { threadId }
-    );
+  const rateLimitMessage = consumeAiRateLimit(userId);
+  if (rateLimitMessage) {
+    return reply(chatId, rateLimitMessage, { threadId });
   }
 
   await sendChatAction(config.telegramToken, chatId, "typing", threadId);
