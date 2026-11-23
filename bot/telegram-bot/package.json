@@ -1,0 +1,15 @@
+{
+  "name": "arenasystem-telegram-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ArenaSystem Telegram assistant with release announcements, interactive menus, and AI support.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "register-webhook": "node scripts/register-webhook.js",
+    "test": "node --test"
+  }
+}
