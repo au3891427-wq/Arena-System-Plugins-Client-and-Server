@@ -1,25 +1,25 @@
-# ArenaSystem Knowledge Base
+# Basis Pengetahuan ArenaSystem
 
-## Project overview
-ArenaSystem is a Minecraft project made of two cooperating parts: a Paper server plugin and a Fabric client mod. Together they provide the server-side arena and match systems plus client-side connection verification and update checking. The supported stable distribution is published in the ArenaSystem GitHub Releases page.
+## Gambaran umum proyek
+ArenaSystem adalah proyek Minecraft yang terdiri dari dua komponen utama yang bekerja sama: plugin server Paper dan mod klien Fabric. Plugin server mengelola sistem arena, tim, pertandingan, kelas, kemampuan, dan medan permainan. Mod klien membantu memverifikasi koneksi ke server serta memeriksa pembaruan. Distribusi resmi yang dianggap stabil diterbitkan melalui halaman GitHub Releases ArenaSystem.
 
-## Paper server plugin
-The ArenaSystem Paper plugin manages arenas, teams, matches, classes, abilities, and terrain. This is the server-side component. Exact gameplay rules, class statistics, ability effects, and installation requirements must be taken from documentation or release notes for the relevant stable version; do not infer them.
+## Plugin server Paper
+Plugin Paper adalah komponen sisi server ArenaSystem. Plugin ini mengelola arena, tim, pertandingan, kelas, kemampuan, dan medan permainan. Aturan permainan yang terperinci, statistik kelas, efek kemampuan, waktu jeda kemampuan, nilai kerusakan, serta persyaratan pemasangan harus merujuk pada dokumentasi atau catatan rilis stabil yang sesuai. Jangan menebak detail yang belum dikonfirmasi.
 
-## Fabric client mod
-ArenaSystemClient is the Fabric client-side mod. It verifies its connection to the ArenaSystem server using a versioned handshake protocol. It also checks for client updates using HTTPS and SHA-256 file verification. Do not assume compatibility with a specific Minecraft, Fabric Loader, Java, or server version unless the current stable release explicitly documents it.
+## Mod klien Fabric
+ArenaSystemClient adalah mod sisi klien berbasis Fabric. Mod ini memverifikasi koneksi ke server ArenaSystem melalui protokol handshake yang memiliki versi. Mod ini juga memeriksa pembaruan klien melalui HTTPS dan memverifikasi berkas menggunakan SHA-256. Jangan mengasumsikan kompatibilitas dengan versi Minecraft, Fabric Loader, Java, atau server tertentu kecuali versi tersebut disebutkan secara eksplisit pada rilis stabil saat ini.
 
-## Handshake protocol
-The client mod verifies its connection to the server through a versioned handshake. The protocol is used to check that the client and server can communicate using the expected protocol version. Detailed packet fields, timeout behavior, and compatibility rules are not documented in this knowledge base; do not invent them.
+## Protokol handshake
+Mod klien memverifikasi koneksi ke server melalui proses handshake dengan versi protokol tertentu. Tujuannya memastikan klien dan server dapat berkomunikasi menggunakan versi protokol yang diharapkan. Rincian kolom paket, perilaku batas waktu, serta aturan kompatibilitas belum dijelaskan dalam basis pengetahuan ini. Jangan mengarang rincian tersebut.
 
-## Client updater
-The client mod checks for updates over HTTPS and verifies downloaded files using SHA-256. Stable downloadable artifacts are published as GitHub Releases. Do not claim that an update is available until the release metadata confirms it.
+## Pemeriksa pembaruan klien
+Mod klien memeriksa pembaruan melalui HTTPS dan memverifikasi berkas yang diunduh menggunakan SHA-256. Berkas yang dapat diunduh sebagai rilis stabil diterbitkan melalui GitHub Releases. Jangan menyatakan bahwa pembaruan tersedia sebelum metadata rilis mengonfirmasikannya.
 
-## Stable releases and downloads
-The stable distribution repository is https://github.com/au3891427-wq/Arena-System-Plugins-Client-and-Server. Use its GitHub Releases page at https://github.com/au3891427-wq/Arena-System-Plugins-Client-and-Server/releases. A stable release must not be a draft or prerelease and must include an uploaded JAR before it is shown as a downloadable stable release. Release notes are the source of truth for version-specific changes and compatibility.
+## Rilis stabil dan unduhan
+Repositori distribusi stabil ArenaSystem adalah https://github.com/au3891427-wq/Arena-System-Plugins-Client-and-Server. Halaman rilisnya tersedia di https://github.com/au3891427-wq/Arena-System-Plugins-Client-and-Server/releases. Rilis stabil tidak boleh berstatus draft atau prarilis dan harus memiliki berkas JAR yang berhasil diunggah sebelum ditampilkan sebagai unduhan stabil. Catatan rilis merupakan sumber utama untuk perubahan dan kompatibilitas pada versi tertentu.
 
-## Installation and compatibility
-Installation instructions and exact version compatibility are version-specific. They are not confirmed in this general knowledge base. Ask the user which stable release they are using and direct them to that release's notes. Never guess Minecraft version, Paper version, Fabric Loader version, Java version, dependencies, or install paths.
+## Pemasangan dan kompatibilitas
+Petunjuk pemasangan dan kompatibilitas versi dapat berbeda pada setiap rilis. Informasi lengkapnya belum tersedia dalam basis pengetahuan umum ini. Tanyakan versi rilis stabil yang digunakan pengguna dan arahkan mereka ke catatan rilis versi tersebut. Jangan menebak versi Minecraft, Paper, Fabric Loader, Java, dependensi, atau lokasi pemasangan.
 
-## Classes and abilities
-The Paper plugin manages classes and abilities, but this knowledge base does not yet contain confirmed descriptions, statistics, cooldowns, damage values, or gameplay behavior for individual classes. Do not invent details. Refer the user to the current stable release notes or ask a maintainer to add verified documentation.
+## Kelas dan kemampuan
+Plugin Paper mengelola kelas dan kemampuan, tetapi basis pengetahuan ini belum memuat uraian, statistik, waktu jeda, nilai kerusakan, atau perilaku permainan yang telah dikonfirmasi untuk setiap kelas. Jangan mengarang detail. Arahkan pengguna ke catatan rilis stabil terbaru atau minta pengelola proyek menambahkan dokumentasi yang sudah diverifikasi.
