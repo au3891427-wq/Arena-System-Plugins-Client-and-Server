@@ -11,7 +11,9 @@ public record AppConfig(
         String telegramWebhookSecret,
         String publicBaseUrl,
         String githubRepository,
-        Set<String> allowedChatIds
+        Set<String> allowedChatIds,
+        String releaseMonitorStateFile,
+        int releaseMonitorIntervalSeconds
 ) {
     public static AppConfig fromEnvironment() {
         int port = parsePort(System.getenv().getOrDefault("PORT", "8080"));
@@ -22,6 +24,13 @@ public record AppConfig(
                 "GITHUB_REPOSITORY",
                 "au3891427-wq/Arena-System-Plugins-Client-and-Server"
         );
+        String releaseStateFile = value(
+                "RELEASE_MONITOR_STATE_FILE",
+                "data/release-monitor-state.json"
+        );
+        int releaseMonitorIntervalSeconds = parseReleaseMonitorInterval(
+                value("RELEASE_MONITOR_INTERVAL_SECONDS", "60")
+        );
         Set<String> allowedIds = Arrays.stream(
                         value("TELEGRAM_ALLOWED_CHAT_IDS", "").split(",")
                 )
@@ -30,7 +39,8 @@ public record AppConfig(
                 .collect(Collectors.toUnmodifiableSet());
 
         AppConfig config = new AppConfig(
-                port, token, secret, publicUrl, repository, allowedIds
+                port, token, secret, publicUrl, repository, allowedIds,
+                releaseStateFile, releaseMonitorIntervalSeconds
         );
         config.validate();
         return config;
@@ -39,6 +49,23 @@ public record AppConfig(
     private static String value(String name, String fallback) {
         String value = System.getenv(name);
         return value == null ? fallback : value.trim();
+    }
+
+    private static int parseReleaseMonitorInterval(String raw) {
+        try {
+            int parsed = Integer.parseInt(raw);
+            if (parsed < 30 || parsed > 3600) {
+                throw new IllegalArgumentException(
+                        "RELEASE_MONITOR_INTERVAL_SECONDS must be between 30 and 3600."
+                );
+            }
+            return parsed;
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException(
+                    "RELEASE_MONITOR_INTERVAL_SECONDS must be a valid integer.",
+                    exception
+            );
+        }
     }
 
     private static int parsePort(String raw) {
@@ -75,6 +102,9 @@ public record AppConfig(
         }
         if (!githubRepository.matches("[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")) {
             throw new IllegalArgumentException("GITHUB_REPOSITORY must use owner/repository format.");
+        }
+        if (releaseMonitorStateFile.isBlank()) {
+            throw new IllegalArgumentException("RELEASE_MONITOR_STATE_FILE must not be blank.");
         }
     }
 }
