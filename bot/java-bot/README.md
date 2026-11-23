@@ -11,7 +11,8 @@ A Java 21 Telegram bot with a local, retrieval-based ArenaSystem assistant. It d
 - Private chats can send questions directly; in group topics use /ask <question> or reply to a bot message.
 - /reset clears the user's short conversation context.
 - /privacy describes local processing and in-memory context.
-- /setreleasechannel configures the current Telegram forum topic as the destination for later JAR upload announcements (group administrators only).
+- /setreleasechannel configures the current Telegram forum topic as the destination for later JAR upload announcements and manually submitted announcements (group administrators only).
+- `POST /api/announcement` accepts authenticated manual announcements and forwards them to the configured Telegram topic.
 - GitHub Actions announces stable Release publication. The Java service polls GitHub Releases for JAR assets uploaded after publication and announces each new asset once.
 
 ## Bahasa jawaban
@@ -58,6 +59,7 @@ Required service variables:
 | --- | --- |
 | TELEGRAM_BOT_TOKEN | Token from Telegram BotFather |
 | TELEGRAM_WEBHOOK_SECRET | Random 1-256 character value using letters, digits, underscore, hyphen |
+| ANNOUNCEMENT_API_KEY | Optional secret key (at least 32 characters) for the manual announcement API. Leave unset to disable the endpoint. |
 | PUBLIC_BASE_URL | The generated Railway HTTPS domain, without a trailing slash |
 
 Optional variables:
@@ -70,7 +72,13 @@ Optional variables:
 | RELEASE_MONITOR_INTERVAL_SECONDS | `60` | Release polling interval in seconds (30–3600). |
 | PORT | Railway-provided | HTTP listener port |
 
-The service serves GET /healthz and POST /telegram/webhook. On startup it registers Telegram commands, sets the webhook automatically, and starts the release asset monitor. Attach a Railway persistent volume at `/data` and set `RELEASE_MONITOR_STATE_FILE=/data/release-monitor-state.json` before relying on the monitor in production. After deployment, run `/setreleasechannel` as a group administrator inside the forum topic that should receive asset announcements. The bot must be an administrator in that group so it can verify the caller's administrator status. Railway should route the public domain to the container's PORT.
+The service serves GET /healthz, POST /telegram/webhook, and (when `ANNOUNCEMENT_API_KEY` is configured) POST `/api/announcement`. Manual announcement requests use `Authorization: Bearer <ANNOUNCEMENT_API_KEY>`, `Content-Type: application/json`, and a JSON body such as `{"text":"📢 Pengumuman ArenaSystem\\n\\nVersi terbaru sudah tersedia."}`. The endpoint accepts only the message text; it always uses the group/topic configured with `/setreleasechannel`, applies a 3,900-character limit and a rate limit of five requests per minute, and returns only after Telegram confirms the send. Never commit or share the API key. Attach a Railway persistent volume at `/data` and set `RELEASE_MONITOR_STATE_FILE=/data/release-monitor-state.json` before relying on the monitor in production. After deployment, run `/setreleasechannel` as a group administrator inside the forum topic that should receive asset announcements. The bot must be an administrator in that group so it can verify the caller's administrator status. Railway should route the public domain to the container's PORT.
+
+## ChatGPT announcement bridge
+
+The Chrome extension source is in `tools/chatgpt-telegram-announcer/`. It is intended for personal ChatGPT accounts that cannot connect custom MCP write tools: the user asks ChatGPT to draft an announcement, opens the extension, imports the latest assistant reply (or selected text), reviews/edits the preview, and explicitly confirms sending. The API key is stored in Chrome local extension storage and is not inserted into the ChatGPT page. The extension does not monitor conversations or send automatically.
+
+Install by opening `chrome://extensions`, enabling Developer mode, choosing **Load unpacked**, and selecting the extension folder. Then paste the API key once in the extension popup and save it. The bot's `/setreleasechannel` destination must already be configured.
 
 ## Knowledge base maintenance
 
