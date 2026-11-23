@@ -19,7 +19,7 @@ Chrome Extension Manifest V3 untuk memindahkan draft dari percakapan ChatGPT ke 
 5. Buka `chatgpt.com`, buat draft, dan buka popup extension.
 6. Klik **Ambil jawaban ChatGPT**, edit preview, lalu klik **Kirim ke topic Update** dan setujui dialog konfirmasi.
 
-Pastikan Telegram bot sudah dikonfigurasi ke topic yang benar dengan menjalankan `/setreleasechannel` sebagai admin grup.
+Pastikan Telegram bot sudah dikonfigurasi ke topic yang benar dengan menjalankan `/setreleasechannel` sebagai admin grup. API key hanya dikirim melalui HTTPS ke domain Railway bot yang ditetapkan di extension.
 
 ## API
 
