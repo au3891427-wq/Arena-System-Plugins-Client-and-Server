@@ -56,3 +56,10 @@ The test run sends only a connection-check message; it does not create a GitHub 
 ## Important
 
 The Telegram workflow only announces releases published in this repository. It does not automatically copy or promote files from the development repository. Only upload files here after they have been reviewed and approved as stable.
+
+## Telegram Assistant
+
+The repository includes the ArenaSystem Telegram assistant in [bot/telegram-bot](bot/telegram-bot/README.md). It adds an interactive Telegram menu, stable release/download browsing, and an optional AI support chat. See the bot README for deployment and environment-variable setup.
+
+The existing [Telegram Release Announcer workflow](.github/workflows/telegram-release-notify.yml) continues to publish stable-release announcements to the configured Update forum topic.
+
