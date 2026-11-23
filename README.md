@@ -40,7 +40,7 @@ When a stable release is published, **Sync ArenaSystem Client Update Manifest** 
 
 A Fabric client release must contain exactly one client JAR named `ArenaSystem_Client-X.Y.Z.jar` and the updater helper `ArenaSystem_Client_Updater-0.1.0.jar`. The workflow reads the version and compatibility metadata from `fabric.mod.json`, calculates SHA-256 for both JARs, and writes the release tag and verified asset URLs into the manifest. It refuses prereleases, mismatched JAR metadata, duplicate/missing required assets, version downgrades, and replacing an existing stable version with different bytes.
 
-For a newly published stable Fabric release, manifest synchronization is automatic. The existing `Fabric` release can be synchronized manually after its required assets have been uploaded. Do not edit the generated manifest by hand.
+Automatic synchronization runs for the existing `Fabric` release and versioned client tags named `assassin-client-vX.Y.Z`; server-only `Bukkit` releases are ignored. For the existing `Fabric` release, run the workflow manually after its required assets have been uploaded. Do not edit the generated manifest by hand.
 
 ## Telegram release announcements
 
