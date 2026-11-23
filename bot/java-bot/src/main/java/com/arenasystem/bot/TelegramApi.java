@@ -97,7 +97,7 @@ public final class TelegramApi {
         ArrayNode commands = mapper.createArrayNode();
         addCommand(commands, "start", "Buka asisten ArenaSystem");
         addCommand(commands, "help", "Tampilkan perintah dan bantuan");
-        addCommand(commands, "latest", "Show the latest stable release");
+        addCommand(commands, "latest", "Tampilkan rilis stabil terbaru");
         addCommand(commands, "downloads", "Lihat unduhan JAR stabil");
         addCommand(commands, "ask", "Tanyakan sesuatu kepada asisten lokal");
         addCommand(commands, "reset", "Hapus konteks percakapan singkat");
