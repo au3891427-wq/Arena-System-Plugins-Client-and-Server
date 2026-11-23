@@ -16,7 +16,7 @@ A Node.js Telegram bot for ArenaSystem. It combines styled in-chat menus, stable
 
 ## Runtime
 
-- Node.js 22 or newer.
+- Node.js 22.9 or newer.
 - No runtime npm dependencies; it uses Node's built-in HTTP server and fetch.
 - A public HTTPS endpoint is required for Telegram webhooks.
 - One running instance is recommended because conversation history and update de-duplication are kept in process memory.
@@ -53,7 +53,7 @@ If PUBLIC_BASE_URL is added after the first deployment, redeploy the service so 
 
 ## Local development
 
-Run npm test and npm start from this directory.
+Copy .env.example to .env, fill local values, then run npm test and npm start from this directory. The start command loads .env when the file exists.
 
 For local webhook testing, expose the local port through an HTTPS tunnel and set PUBLIC_BASE_URL to the public tunnel URL. Do not expose the webhook without TELEGRAM_WEBHOOK_SECRET.
 
