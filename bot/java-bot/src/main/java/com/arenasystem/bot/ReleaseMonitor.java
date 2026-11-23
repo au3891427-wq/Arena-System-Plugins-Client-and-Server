@@ -294,8 +294,9 @@ public final class ReleaseMonitor {
             }
 
             if (type == ComponentType.MOD) {
-                message.append("\nℹ️ MOD Client direncanakan akan dilengkapi updater otomatis.\n")
-                        .append("Untuk saat ini, kalau ingin mengunduhnya langsung:\n");
+                message.append("\nℹ️ MOD Client yang sudah kalian unduh akan otomatis update dalam beberapa menit ")
+                        .append("karena sudah memiliki fitur auto updater, tapi kalau kalian ingin ")
+                        .append("mengunduhnya langsung bisa lewat sini:\n");
                 for (PendingAsset pending : groupedAssets) {
                     message.append("• ").append(pending.asset().name()).append(":\n")
                             .append(pending.asset().downloadUrl()).append("\n");
