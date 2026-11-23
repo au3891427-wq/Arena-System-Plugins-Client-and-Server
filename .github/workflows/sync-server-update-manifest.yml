@@ -1,0 +1,131 @@
+name: Sync ArenaSystem Server Update Manifest
+
+on:
+  release:
+    types: [published]
+  pull_request:
+    paths:
+      - ".github/workflows/sync-server-update-manifest.yml"
+      - ".github/scripts/sync-server-update-manifest.sh"
+      - "README.md"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing stable Bukkit release tag (normally Bukkit)"
+        required: true
+        default: "Bukkit"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate manifest workflow and generator
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check generator shell syntax
+        run: bash -n .github/scripts/sync-server-update-manifest.sh
+      - name: Exercise manifest generation without publishing
+        shell: bash
+        env:
+          GH_TOKEN: ci-test-token
+          GITHUB_REPOSITORY: au3891427-wq/Arena-System-Plugins-Client-and-Server
+          EVENT_NAME: workflow_dispatch
+          INPUT_RELEASE_TAG: Bukkit
+          DRY_RUN: "true"
+        run: |
+          set -euo pipefail
+          test_root="$RUNNER_TEMP/arenasystem-server-manifest-test"
+          asset_dir="$test_root/assets"
+          mock_bin="$test_root/bin"
+          jar_root="$test_root/jar"
+          mkdir -p "$asset_dir" "$mock_bin" "$jar_root"
+
+          cat > "$jar_root/plugin.yml" <<'YAML'
+          name: ArenaSystem
+          version: '0.2.8.9'
+          main: id.hadziq.arenasystem.ArenaSystemPlugin
+          api-version: '26.3'
+          YAML
+          (cd "$jar_root" && zip -q "$asset_dir/arenaSystem_Bukkit-0.2.8.9.jar" plugin.yml)
+
+          cat > "$mock_bin/gh" <<'MOCK'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ "$1" == "release" && "$2" == "view" ]]; then
+            cat <<'JSON'
+          {
+            "tagName": "Bukkit",
+            "isDraft": false,
+            "isPrerelease": false,
+            "assets": [
+              {"name": "arenaSystem_Bukkit-0.2.8.9.jar"}
+            ]
+          }
+          JSON
+          elif [[ "$1" == "release" && "$2" == "download" ]]; then
+            destination=""
+            while (($#)); do
+              if [[ "$1" == "--dir" ]]; then
+                destination="$2"
+                shift 2
+              else
+                shift
+              fi
+            done
+            mkdir -p "$destination"
+            cp "$TEST_ASSET_DIR/arenaSystem_Bukkit-0.2.8.9.jar" "$destination/"
+          else
+            echo "Unexpected gh command: $*" >&2
+            exit 2
+          fi
+          MOCK
+          chmod +x "$mock_bin/gh"
+          export TEST_ASSET_DIR="$asset_dir"
+          export PATH="$mock_bin:$PATH"
+
+          bash .github/scripts/sync-server-update-manifest.sh
+
+          expected_hash="$(sha256sum "$asset_dir/arenaSystem_Bukkit-0.2.8.9.jar" | cut -d ' ' -f 1)"
+          jq -e --arg expectedHash "$expected_hash" '
+            .schemaVersion == 1 and
+            .channel == "stable" and
+            .plugin == "ArenaSystem" and
+            .version == "0.2.8.9" and
+            .releaseTag == "Bukkit" and
+            .releaseUrl == "https://github.com/au3891427-wq/Arena-System-Plugins-Client-and-Server/releases/tag/Bukkit" and
+            .downloadUrl == "https://github.com/au3891427-wq/Arena-System-Plugins-Client-and-Server/releases/download/Bukkit/arenaSystem_Bukkit-0.2.8.9.jar" and
+            .sha256 == $expectedHash
+          ' arenasystem-server-update-manifest.json >/dev/null
+      - name: Parse workflow YAML
+        run: ruby -e 'require "yaml"; YAML.load_file(".github/workflows/sync-server-update-manifest.yml"); puts "Workflow YAML parsed successfully."'
+
+  publish-manifest:
+    name: Verify server release and publish manifest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'release' &&
+       github.event.action == 'published' &&
+       github.event.release.draft == false &&
+       github.event.release.prerelease == false &&
+       github.event.release.tag_name == 'Bukkit')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out distribution main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Verify server release assets and publish update manifest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+        run: bash .github/scripts/sync-server-update-manifest.sh
