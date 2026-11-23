@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -24,6 +25,8 @@ import java.util.concurrent.TimeUnit;
 public final class ReleaseMonitor {
     private static final System.Logger LOGGER = System.getLogger(ReleaseMonitor.class.getName());
     private static final int MAX_TRACKED_ASSETS = 5000;
+    static final Duration BATCH_QUIET_PERIOD = Duration.ofSeconds(5);
+    static final Duration MAX_BATCH_WINDOW = Duration.ofSeconds(20);
 
     private final ReleaseService releases;
     private final TelegramApi telegram;
@@ -40,7 +43,7 @@ public final class ReleaseMonitor {
 
     private MonitorState state;
 
-    private record PendingAsset(
+    record PendingAsset(
             ReleaseService.PublishedRelease release,
             ReleaseService.ReleaseAsset asset
     ) {}
@@ -146,23 +149,17 @@ public final class ReleaseMonitor {
 
         List<ReleaseService.PublishedRelease> stableReleases =
                 releases.publishedStableReleases();
-        List<PendingAsset> pendingAssets = new ArrayList<>();
         Set<Long> discoveredAssetIds = new LinkedHashSet<>();
-
-        // Collect all new JARs first, so one polling cycle creates one Telegram message.
-        for (ReleaseService.PublishedRelease release : stableReleases) {
-            for (ReleaseService.ReleaseAsset asset : release.assets()) {
-                if (isPostPublicationJar(release, asset)
-                        && !processedSnapshot.contains(asset.id())
-                        && discoveredAssetIds.add(asset.id())) {
-                    pendingAssets.add(new PendingAsset(release, asset));
-                }
-            }
-        }
+        List<PendingAsset> pendingAssets = new ArrayList<>(
+                collectNewAssets(stableReleases, processedSnapshot, discoveredAssetIds)
+        );
 
         if (pendingAssets.isEmpty()) {
             return;
         }
+
+        // Debounce sequential uploads so client and server JARs are announced together.
+        collectDuringQuietPeriod(pendingAssets, processedSnapshot, discoveredAssetIds);
 
         telegram.sendMessage(
                 chatId,
@@ -186,6 +183,72 @@ public final class ReleaseMonitor {
         LOGGER.log(System.Logger.Level.INFO,
                 "Announced " + pendingAssets.size() + " new JAR asset(s) across " +
                         releaseCount + " release(s) in one Telegram message.");
+    }
+
+    static List<PendingAsset> collectNewAssets(
+            List<ReleaseService.PublishedRelease> releases,
+            Set<Long> processedAssetIds,
+            Set<Long> discoveredAssetIds
+    ) {
+        List<PendingAsset> found = new ArrayList<>();
+        for (ReleaseService.PublishedRelease release : releases) {
+            for (ReleaseService.ReleaseAsset asset : release.assets()) {
+                if (isPostPublicationJar(release, asset)
+                        && !processedAssetIds.contains(asset.id())
+                        && discoveredAssetIds.add(asset.id())) {
+                    found.add(new PendingAsset(release, asset));
+                }
+            }
+        }
+        return found;
+    }
+
+    private void collectDuringQuietPeriod(
+            List<PendingAsset> pendingAssets,
+            Set<Long> processedAssetIds,
+            Set<Long> discoveredAssetIds
+    ) throws IOException, InterruptedException {
+        long batchStartedAt = System.nanoTime();
+        long lastNewAssetAt = batchStartedAt;
+        long quietPeriodNanos = BATCH_QUIET_PERIOD.toNanos();
+        long maxWindowNanos = MAX_BATCH_WINDOW.toNanos();
+
+        while (true) {
+            long now = System.nanoTime();
+            long quietDeadline = lastNewAssetAt + quietPeriodNanos;
+            long maxDeadline = batchStartedAt + maxWindowNanos;
+            long sleepNanos = Math.min(quietDeadline, maxDeadline) - now;
+
+            if (sleepNanos <= 0) {
+                break;
+            }
+
+            TimeUnit.NANOSECONDS.sleep(sleepNanos);
+
+            // Bypass ETag for this short recheck so a newly uploaded asset is not hidden
+            // behind a cached 304 response during the debounce window.
+            List<ReleaseService.PublishedRelease> refreshedReleases =
+                    releases.publishedStableReleases(true);
+            int previousCount = pendingAssets.size();
+            pendingAssets.addAll(collectNewAssets(
+                    refreshedReleases,
+                    processedAssetIds,
+                    discoveredAssetIds
+            ));
+
+            if (pendingAssets.size() > previousCount) {
+                lastNewAssetAt = System.nanoTime();
+                LOGGER.log(System.Logger.Level.INFO,
+                        "Detected additional JAR asset(s) during the announcement window; " +
+                                "extending the batch quiet period.");
+            }
+
+            now = System.nanoTime();
+            if (now - lastNewAssetAt >= quietPeriodNanos
+                    || now - batchStartedAt >= maxWindowNanos) {
+                break;
+            }
+        }
     }
 
     static String componentLabel(ReleaseService.PublishedRelease release) {
