@@ -13,6 +13,10 @@ A Java 21 Telegram bot with a local, retrieval-based ArenaSystem assistant. It d
 - /privacy describes local processing and in-memory context.
 - Release announcements remain in the separate GitHub Actions workflow.
 
+## Bahasa jawaban
+
+Semua jawaban dari fitur /ask disusun dalam Bahasa Indonesia. Pertanyaan berbahasa Inggris tetap dapat dikenali melalui kamus sinonim, tetapi konten jawaban tetap diambil dari basis pengetahuan berbahasa Indonesia. Nama teknologi dan istilah teknis resmi (misalnya Paper, Fabric, HTTPS, SHA-256, dan GitHub Releases) dipertahankan.
+
 ## What "local assistant" means
 
 This is a retrieval-based support assistant, not a locally trained large language model and not a generative ChatGPT replacement. It tokenizes Indonesian/English questions, expands a small synonym dictionary, ranks verified knowledge sections with BM25, and composes an answer from the best matching sections.
