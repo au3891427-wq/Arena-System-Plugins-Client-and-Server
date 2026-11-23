@@ -66,6 +66,8 @@ Optional variables:
 | --- | --- | --- |
 | GITHUB_REPOSITORY | au3891427-wq/Arena-System-Plugins-Client-and-Server | Repository used for stable release lookup |
 | TELEGRAM_ALLOWED_CHAT_IDS | empty | Comma-separated chat allowlist; empty allows all chats |
+| RELEASE_MONITOR_STATE_FILE | `data/release-monitor-state.json` | Persistent JSON state. On Railway, set `/data/release-monitor-state.json` and mount a persistent volume at `/data`. |
+| RELEASE_MONITOR_INTERVAL_SECONDS | `60` | Release polling interval in seconds (30–3600). |
 | PORT | Railway-provided | HTTP listener port |
 
 The service serves GET /healthz and POST /telegram/webhook. On startup it registers Telegram commands, sets the webhook automatically, and starts the release asset monitor. Attach a Railway persistent volume at `/data` and set `RELEASE_MONITOR_STATE_FILE=/data/release-monitor-state.json` before relying on the monitor in production. After deployment, run `/setreleasechannel` as a group administrator inside the forum topic that should receive asset announcements. The bot must be an administrator in that group so it can verify the caller's administrator status. Railway should route the public domain to the container's PORT.
