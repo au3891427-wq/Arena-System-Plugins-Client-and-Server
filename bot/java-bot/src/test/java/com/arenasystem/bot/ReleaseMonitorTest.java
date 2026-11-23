@@ -103,8 +103,11 @@ class ReleaseMonitorTest {
 
         String message = ReleaseMonitor.buildMessage(List.of(pending));
 
-        assertTrue(message.contains("MOD Client direncanakan akan dilengkapi updater otomatis."));
-        assertTrue(message.contains("kalau ingin mengunduhnya langsung:"));
+        assertTrue(message.contains(
+                "MOD Client yang sudah kalian unduh akan otomatis update dalam beberapa menit " +
+                        "karena sudah memiliki fitur auto updater, tapi kalau kalian ingin " +
+                        "mengunduhnya langsung bisa lewat sini:"
+        ));
         assertTrue(message.contains(clientJar.downloadUrl()));
     }
 
