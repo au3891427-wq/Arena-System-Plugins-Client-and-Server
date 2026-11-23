@@ -95,13 +95,13 @@ public final class TelegramApi {
 
     public void registerCommands() throws IOException, InterruptedException {
         ArrayNode commands = mapper.createArrayNode();
-        addCommand(commands, "start", "Open the ArenaSystem assistant");
-        addCommand(commands, "help", "Show commands and help");
+        addCommand(commands, "start", "Buka asisten ArenaSystem");
+        addCommand(commands, "help", "Tampilkan perintah dan bantuan");
         addCommand(commands, "latest", "Show the latest stable release");
-        addCommand(commands, "downloads", "Browse stable JAR downloads");
-        addCommand(commands, "ask", "Ask the local ArenaSystem assistant");
-        addCommand(commands, "reset", "Clear your short chat context");
-        addCommand(commands, "privacy", "Read how local chat context is handled");
+        addCommand(commands, "downloads", "Lihat unduhan JAR stabil");
+        addCommand(commands, "ask", "Tanyakan sesuatu kepada asisten lokal");
+        addCommand(commands, "reset", "Hapus konteks percakapan singkat");
+        addCommand(commands, "privacy", "Baca informasi privasi percakapan");
         ObjectNode payload = mapper.createObjectNode();
         payload.set("commands", commands);
         call("setMyCommands", payload);
