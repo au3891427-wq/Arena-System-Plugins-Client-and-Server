@@ -5,11 +5,36 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ReleaseMonitorTest {
     private static final Instant PUBLISHED_AT = Instant.parse("2026-11-23T10:00:00Z");
+
+    @Test
+    void classifiesFabricClientReleaseAsMod() {
+        assertEquals(
+                "🧩 MOD — CLIENT / FABRIC",
+                ReleaseMonitor.componentLabel(release("ArenaSystem Client", "Fabric"))
+        );
+    }
+
+    @Test
+    void classifiesBukkitServerReleaseAsPlugin() {
+        assertEquals(
+                "🔌 PLUGIN — SERVER / BUKKIT",
+                ReleaseMonitor.componentLabel(release("ArenaSystem Server", "Bukkit"))
+        );
+    }
+
+    @Test
+    void leavesUnknownReleaseInSeparateGroup() {
+        assertEquals(
+                "📦 KOMPONEN LAIN",
+                ReleaseMonitor.componentLabel(release("ArenaSystem Tools", "Tools"))
+        );
+    }
 
     @Test
     void detectsJarUploadedAfterReleasePublication() {
@@ -60,13 +85,17 @@ class ReleaseMonitorTest {
     }
 
     private static ReleaseService.PublishedRelease release() {
+        return release("ArenaSystem Server", "Bukkit");
+    }
+
+    private static ReleaseService.PublishedRelease release(String name, String tag) {
         return new ReleaseService.PublishedRelease(
                 455024822L,
-                "ArenaSystem Server",
-                "Bukkit",
+                name,
+                tag,
                 PUBLISHED_AT,
                 "",
-                "https://github.com/example/repo/releases/tag/Bukkit",
+                "https://github.com/example/repo/releases/tag/" + tag,
                 List.of()
         );
     }
