@@ -62,62 +62,146 @@ loadLatestButton.addEventListener("click", async () => {
           return { text: selectedText, source: "selected-text", diagnostics: null };
         }
 
-        const readText = (element) =>
-          (element?.innerText || element?.textContent || "").trim();
+        const normalizeText = (value) =>
+          String(value || "")
+            .replace(/\u200b/g, "")
+            .replace(/\r\n?/g, "\n")
+            .replace(/\n[ \t]*\n{2,}/g, "\n\n")
+            .trim();
 
-        // ChatGPT has changed its message markup across UI variants.
-        // Prefer the current conversation-role attributes, then older selectors.
-        const selectors = [
-          { selector: '[data-conversation-role="assistant"]', source: "conversation-role" },
-          { selector: '[data-markdown-text-style="assistant-message"]', source: "assistant-markdown" },
-          { selector: '[data-message-author-role="assistant"]', source: "message-author-role" },
-          { selector: '[data-role="assistant"]', source: "data-role" },
-          { selector: '[data-message-author="assistant"]', source: "message-author" },
-          { selector: 'article[data-turn="assistant"]', source: "article-turn" },
-          { selector: '[data-turn="assistant"] .markdown', source: "turn-markdown" },
-          { selector: ".agent-turn", source: "agent-turn" }
+        const readText = (element) =>
+          normalizeText(element?.innerText || element?.textContent || "");
+
+        const isVisible = (element) =>
+          element instanceof HTMLElement &&
+          element.getClientRects().length > 0 &&
+          getComputedStyle(element).visibility !== "hidden";
+
+        // Reject UI labels that can appear in accessibility or message wrappers.
+        const isUiOnlyText = (text) => {
+          const compact = text.toLowerCase().replace(/[\s:：.!?,]+/g, "");
+          return new Set([
+            "chatgpt",
+            "chatgptsaid",
+            "chatgptsaidchatgpt",
+            "assistant",
+            "copy",
+            "edit",
+            "share",
+            "readaloud",
+            "regenerate",
+            "goodresponse",
+            "badresponse"
+          ]).has(compact);
+        };
+
+        const roleSelectors = [
+          '[data-message-author-role="assistant"]',
+          '[data-conversation-role="assistant"]',
+          '[data-role="assistant"]',
+          '[data-message-author="assistant"]',
+          'article[data-turn="assistant"]',
+          '[data-turn="assistant"]',
+          ".agent-turn"
+        ];
+
+        const contentSelectors = [
+          '[data-markdown-text-style="assistant-message"]',
+          '[data-message-content]',
+          '[data-testid*="message-content"]',
+          ".markdown",
+          '[class*="markdown"]',
+          '[class*="prose"]'
         ];
 
         const counts = {};
-        for (const item of selectors) {
-          const nodes = Array.from(document.querySelectorAll(item.selector));
-          counts[item.source] = nodes.length;
-          for (let index = nodes.length - 1; index >= 0; index -= 1) {
-            const text = readText(nodes[index]);
-            if (text) {
-              return {
-                text,
-                source: item.source,
-                diagnostics: counts
-              };
-            }
+        const wrappers = new Set();
+
+        // Gather all possible assistant containers first. Do not return the
+        // first selector match: broad role wrappers can contain only UI labels.
+        for (const selector of roleSelectors) {
+          const nodes = Array.from(document.querySelectorAll(selector));
+          counts[selector] = nodes.length;
+          for (const node of nodes) {
+            if (isVisible(node)) wrappers.add(node);
           }
         }
 
-        // Some layouts expose the conversation and turn wrappers separately.
+        // Some ChatGPT layouts expose the assistant role inside a turn wrapper.
         const root =
           document.querySelector('[data-thread-find-target="conversation"]') ||
           document.querySelector("main") ||
           document.body;
-
-        const turns = Array.from(
+        const turnWrappers = Array.from(
           root.querySelectorAll('[data-turn-key], article[data-turn], [data-testid^="conversation-turn"]')
         );
-        counts["turn-wrappers"] = turns.length;
+        counts["turn-wrappers"] = turnWrappers.length;
 
-        for (let index = turns.length - 1; index >= 0; index -= 1) {
-          const turn = turns[index];
-          const assistantNode = turn.querySelector(
-            '[data-conversation-role="assistant"], ' +
-            '[data-markdown-text-style="assistant-message"], ' +
-            '[data-message-author-role="assistant"], ' +
-            '[data-role="assistant"]'
-          );
-          const text = readText(assistantNode);
-          if (text) {
+        const assistantSelector = roleSelectors.slice(0, 6).join(", ");
+        for (const turn of turnWrappers) {
+          const assistantNode = turn.matches(assistantSelector)
+            ? turn
+            : turn.querySelector(assistantSelector);
+          if (assistantNode && isVisible(assistantNode)) wrappers.add(assistantNode);
+        }
+
+        // The explicit assistant-markdown attribute is reliable enough to
+        // inspect globally as a fallback, even when wrapper attributes change.
+        const explicitMarkdown = Array.from(
+          document.querySelectorAll('[data-markdown-text-style="assistant-message"]')
+        );
+        counts["explicit-assistant-markdown"] = explicitMarkdown.length;
+        for (const node of explicitMarkdown) {
+          if (isVisible(node)) wrappers.add(node);
+        }
+
+        const chooseContentFrom = (wrapper) => {
+          const candidates = new Map();
+
+          const addCandidate = (node, source, priority) => {
+            if (!isVisible(node)) return;
+            const text = readText(node);
+            if (!text || isUiOnlyText(text)) return;
+
+            const score = priority * 100000 + Math.min(text.length, 50000);
+            const previous = candidates.get(node);
+            if (!previous || score > previous.score) {
+              candidates.set(node, { text, source, score });
+            }
+          };
+
+          for (let index = 0; index < contentSelectors.length; index += 1) {
+            const selector = contentSelectors[index];
+            const priority = 100 - index * 10;
+            if (wrapper.matches(selector)) {
+              addCandidate(wrapper, selector, priority);
+            }
+            for (const node of wrapper.querySelectorAll(selector)) {
+              addCandidate(node, selector, priority);
+            }
+          }
+
+          // Last-resort fallback: use the assistant wrapper only when it
+          // contains substantive text rather than a short ChatGPT UI label.
+          addCandidate(wrapper, "assistant-wrapper", 1);
+
+          return Array.from(candidates.values()).sort((a, b) => b.score - a.score)[0] || null;
+        };
+
+        const orderedWrappers = Array.from(wrappers).sort((a, b) => {
+          const position = a.compareDocumentPosition(b);
+          if (position & 4) return -1;
+          if (position & 2) return 1;
+          return 0;
+        });
+
+        // Search from the newest assistant container backwards.
+        for (let index = orderedWrappers.length - 1; index >= 0; index -= 1) {
+          const candidate = chooseContentFrom(orderedWrappers[index]);
+          if (candidate) {
             return {
-              text,
-              source: "assistant-in-turn-wrapper",
+              text: candidate.text,
+              source: candidate.source,
               diagnostics: counts
             };
           }
@@ -130,7 +214,6 @@ loadLatestButton.addEventListener("click", async () => {
             ...counts,
             "document-ready-state": document.readyState,
             "main-elements": document.querySelectorAll("main").length,
-            "conversation-roots": document.querySelectorAll('[data-thread-find-target="conversation"]').length,
             "page-title": document.title
           }
         };
