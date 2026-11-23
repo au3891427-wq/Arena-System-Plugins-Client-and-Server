@@ -80,4 +80,4 @@ Edit src/main/resources/knowledge/arenasystem.md only with information confirmed
 
 ## Tests
 
-GitHub Actions runs Maven tests when bot/java-bot files change.
+GitHub Actions runs Maven tests and packages the Java 21 application whenever bot/java-bot files change. The active Railway service uses this directory as its Docker build context.
