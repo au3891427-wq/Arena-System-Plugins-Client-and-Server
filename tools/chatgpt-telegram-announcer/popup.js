@@ -59,52 +59,115 @@ loadLatestButton.addEventListener("click", async () => {
       func: () => {
         const selectedText = window.getSelection()?.toString().trim();
         if (selectedText) {
-          return { text: selectedText, source: "selected-text" };
+          return { text: selectedText, source: "selected-text", diagnostics: null };
         }
 
-        const readText = (element) => (element?.innerText || element?.textContent || "").trim();
+        const readText = (element) =>
+          (element?.innerText || element?.textContent || "").trim();
 
-        // Selector utama pada container pesan ChatGPT.
-        const assistantMessages = Array.from(
-          document.querySelectorAll('[data-message-author-role="assistant"]')
+        // ChatGPT has changed its message markup across UI variants.
+        // Prefer the current conversation-role attributes, then older selectors.
+        const selectors = [
+          { selector: '[data-conversation-role="assistant"]', source: "conversation-role" },
+          { selector: '[data-markdown-text-style="assistant-message"]', source: "assistant-markdown" },
+          { selector: '[data-message-author-role="assistant"]', source: "message-author-role" },
+          { selector: '[data-role="assistant"]', source: "data-role" },
+          { selector: '[data-message-author="assistant"]', source: "message-author" },
+          { selector: 'article[data-turn="assistant"]', source: "article-turn" },
+          { selector: '[data-turn="assistant"] .markdown', source: "turn-markdown" },
+          { selector: ".agent-turn", source: "agent-turn" }
+        ];
+
+        const counts = {};
+        for (const item of selectors) {
+          const nodes = Array.from(document.querySelectorAll(item.selector));
+          counts[item.source] = nodes.length;
+          for (let index = nodes.length - 1; index >= 0; index -= 1) {
+            const text = readText(nodes[index]);
+            if (text) {
+              return {
+                text,
+                source: item.source,
+                diagnostics: counts
+              };
+            }
+          }
+        }
+
+        // Some layouts expose the conversation and turn wrappers separately.
+        const root =
+          document.querySelector('[data-thread-find-target="conversation"]') ||
+          document.querySelector("main") ||
+          document.body;
+
+        const turns = Array.from(
+          root.querySelectorAll('[data-turn-key], article[data-turn], [data-testid^="conversation-turn"]')
         );
+        counts["turn-wrappers"] = turns.length;
 
-        for (let index = assistantMessages.length - 1; index >= 0; index -= 1) {
-          const text = readText(assistantMessages[index]);
-          if (text) return { text, source: "assistant-message" };
-        }
-
-        // Fallback untuk layout yang membungkus setiap giliran percakapan dengan test-id.
-        const turns = Array.from(document.querySelectorAll('main [data-testid^="conversation-turn-"]'));
         for (let index = turns.length - 1; index >= 0; index -= 1) {
           const turn = turns[index];
-          const assistantNode = turn.matches('[data-message-author-role="assistant"]')
-            ? turn
-            : turn.querySelector('[data-message-author-role="assistant"]');
+          const assistantNode = turn.querySelector(
+            '[data-conversation-role="assistant"], ' +
+            '[data-markdown-text-style="assistant-message"], ' +
+            '[data-message-author-role="assistant"], ' +
+            '[data-role="assistant"]'
+          );
           const text = readText(assistantNode);
-          if (text) return { text, source: "assistant-turn" };
+          if (text) {
+            return {
+              text,
+              source: "assistant-in-turn-wrapper",
+              diagnostics: counts
+            };
+          }
         }
 
-        // Fallback terakhir untuk Markdown di area percakapan utama.
-        const markdownBlocks = Array.from(document.querySelectorAll('main .markdown.prose, main .markdown'));
-        for (let index = markdownBlocks.length - 1; index >= 0; index -= 1) {
-          const text = readText(markdownBlocks[index]);
-          if (text) return { text, source: "markdown-fallback" };
-        }
-
-        return { text: "", source: "not-found" };
+        return {
+          text: "",
+          source: "not-found",
+          diagnostics: {
+            ...counts,
+            "document-ready-state": document.readyState,
+            "main-elements": document.querySelectorAll("main").length,
+            "conversation-roots": document.querySelectorAll('[data-thread-find-target="conversation"]').length,
+            "page-title": document.title
+          }
+        };
       }
     });
 
     const extracted = results?.[0]?.result;
     const latestText = typeof extracted === "string" ? extracted.trim() : extracted?.text?.trim();
     if (!latestText) {
-      throw new Error("Elemen jawaban ChatGPT tidak ditemukan. Pastikan percakapan sudah selesai dimuat. Alternatif: blok teks jawaban di halaman ChatGPT, lalu klik tombol ini lagi.");
+      const diagnosticText = extracted?.diagnostics
+        ? " Diagnostik: " + Object.entries(extracted.diagnostics)
+            .map(([key, value]) => key + "=" + value)
+            .join(", ")
+        : "";
+      throw new Error(
+        "Jawaban ChatGPT belum terdeteksi pada tab aktif." +
+        " Pastikan percakapan terbuka, halaman selesai dimuat, lalu coba lagi." +
+        diagnosticText
+      );
     }
 
     messageInput.value = latestText;
     messageInput.dispatchEvent(new Event("input", { bubbles: true }));
-    const sourceLabel = extracted?.source === "selected-text" ? "teks yang dipilih" : "jawaban ChatGPT terakhir";
+
+    const sourceNames = {
+      "selected-text": "teks yang dipilih",
+      "conversation-role": "jawaban ChatGPT (DOM terbaru)",
+      "assistant-markdown": "konten jawaban ChatGPT",
+      "message-author-role": "jawaban ChatGPT",
+      "data-role": "jawaban ChatGPT",
+      "message-author": "jawaban ChatGPT",
+      "article-turn": "jawaban ChatGPT",
+      "turn-markdown": "jawaban ChatGPT",
+      "agent-turn": "jawaban ChatGPT",
+      "assistant-in-turn-wrapper": "jawaban ChatGPT"
+    };
+    const sourceLabel = sourceNames[extracted?.source] || "jawaban ChatGPT terakhir";
     setStatus("Berhasil mengambil " + sourceLabel + ". Periksa dan edit preview sebelum mengirim.");
   } catch (error) {
     const message = error?.message || String(error);
