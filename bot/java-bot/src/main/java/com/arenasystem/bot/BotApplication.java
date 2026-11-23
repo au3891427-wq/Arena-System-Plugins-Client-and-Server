@@ -11,6 +11,7 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -43,6 +44,7 @@ public final class BotApplication {
     private final ObjectMapper mapper = new ObjectMapper();
     private final TelegramApi telegram;
     private final ReleaseService releases;
+    private final ReleaseMonitor releaseMonitor;
     private final LocalAssistant assistant = new LocalAssistant();
     private final HttpServer server;
     private final ExecutorService httpExecutor = Executors.newVirtualThreadPerTaskExecutor();
@@ -57,6 +59,13 @@ public final class BotApplication {
         this.config = config;
         this.telegram = new TelegramApi(config.telegramBotToken(), mapper);
         this.releases = new ReleaseService(config.githubRepository(), mapper);
+        this.releaseMonitor = new ReleaseMonitor(
+                releases,
+                telegram,
+                mapper,
+                Path.of(config.releaseMonitorStateFile()),
+                config.releaseMonitorIntervalSeconds()
+        );
         this.allowedChats = config.allowedChatIds();
         this.server = HttpServer.create(new InetSocketAddress("0.0.0.0", config.port()), 0);
         this.server.setExecutor(httpExecutor);
@@ -94,9 +103,12 @@ public final class BotApplication {
             LOGGER.log(System.Logger.Level.WARNING,
                     "PUBLIC_BASE_URL is empty; Telegram webhook was not registered.");
         }
+
+        releaseMonitor.start();
     }
 
     private void stop() {
+        releaseMonitor.stop();
         server.stop(1);
         requestExecutor.shutdown();
         httpExecutor.shutdown();
@@ -266,8 +278,44 @@ public final class BotApplication {
                 reply(chatId, "🧹 Konteks percakapan singkat sudah dihapus.", threadId, null);
             }
             case "privacy" -> reply(chatId, privacyText(), threadId, null);
+            case "setreleasechannel" -> setReleaseChannel(chatId, userId, threadId);
             default -> sendHelp(chatId, threadId);
         }
+    }
+
+    private void setReleaseChannel(long chatId, long userId, Long threadId)
+            throws Exception {
+        if (threadId == null) {
+            reply(chatId,
+                    "Perintah ini harus dijalankan di dalam topik grup Telegram yang akan menerima pengumuman.",
+                    threadId, null);
+            return;
+        }
+
+        boolean administrator;
+        try {
+            administrator = telegram.isChatAdministrator(chatId, userId);
+        } catch (Exception exception) {
+            LOGGER.log(System.Logger.Level.WARNING,
+                    "Could not verify Telegram administrator status: " + exception.getMessage());
+            reply(chatId,
+                    "Status admin belum dapat diverifikasi. Pastikan bot menjadi admin grup, lalu coba lagi.",
+                    threadId, null);
+            return;
+        }
+
+        if (!administrator) {
+            reply(chatId,
+                    "Hanya admin grup yang dapat mengatur topik pengumuman rilis.",
+                    threadId, null);
+            return;
+        }
+
+        releaseMonitor.setAnnouncementTarget(chatId, threadId);
+        reply(chatId,
+                "✅ Topik ini berhasil ditetapkan sebagai tujuan pengumuman Release ArenaSystem. " +
+                        "Bot akan memeriksa asset JAR baru secara otomatis.",
+                threadId, null);
     }
 
     private void answerQuestion(long chatId, long userId, Long threadId, String question)
@@ -340,7 +388,9 @@ public final class BotApplication {
                 "/ask <pertanyaan> — Tanya asisten lokal",
                 "/reset — Hapus konteks percakapan",
                 "/privacy — Informasi privasi",
+                "/setreleasechannel — Atur topik pengumuman (admin grup)",
                 "",
+                "Jalankan /setreleasechannel di topik grup yang akan menerima pengumuman.",
                 "Di chat pribadi, kamu juga bisa mengirim pertanyaan langsung.",
                 "Di topic grup, gunakan /ask <pertanyaan> atau balas pesan bot."
         );
