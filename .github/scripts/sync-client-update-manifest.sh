@@ -136,6 +136,11 @@ fi
 cp "$manifest_tmp" "$manifest_path"
 jq -e '.schemaVersion == 1 and .channel == "stable" and .modId == "arstm_client0qb201"' "$manifest_path" >/dev/null
 
+if [[ "${DRY_RUN:-false}" == "true" ]]; then
+  echo "Dry-run completed: manifest validated; no commit or push performed."
+  exit 0
+fi
+
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 git add "$manifest_path"
