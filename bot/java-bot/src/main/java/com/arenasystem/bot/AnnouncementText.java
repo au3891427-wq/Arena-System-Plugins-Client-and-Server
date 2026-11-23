@@ -19,7 +19,7 @@ final class AnnouncementText {
                     "Announcement text must not exceed " + MAX_LENGTH + " characters."
             );
         }
-        if (normalized.indexOf('\u0000') >= 0) {
+        if (normalized.chars().anyMatch(character -> character == 0)) {
             throw new IllegalArgumentException("Announcement text contains an invalid character.");
         }
         return normalized;
