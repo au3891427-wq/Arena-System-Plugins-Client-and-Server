@@ -66,7 +66,7 @@ This service uses Telegram setWebhook with allowed_updates set to message and ca
 - The assistant uses the curated KNOWLEDGE.md file plus the latest stable release notes as its factual context.
 - It is instructed to say when a feature or compatibility detail is not documented instead of guessing.
 - Conversation history is kept in process memory for up to 30 minutes of inactivity, with a maximum of 10 messages per chat/user/topic context. /reset clears that context. Restarting the service clears all in-memory context.
-- AI requests are limited to 5 per user per minute in this process.
+- AI requests are limited to 5 per user per minute, 20 total per minute, and 300 total per day in this process. These in-memory limits reset when the service restarts and should be combined with API project spending limits.
 - OpenAI API usage is billed separately from a ChatGPT subscription. Set API project usage limits and monitor usage in the OpenAI Platform before sharing the bot publicly.
 - Keep API keys in Railway service variables, never in the repository.
 
