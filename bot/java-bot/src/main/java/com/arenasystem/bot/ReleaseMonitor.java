@@ -98,6 +98,19 @@ public final class ReleaseMonitor {
         scheduler.shutdownNow();
     }
 
+    public void sendManualAnnouncement(String message) throws IOException, InterruptedException {
+        long chatId;
+        long threadId;
+        synchronized (stateLock) {
+            if (state.chatId == null || state.threadId == null) {
+                throw new IllegalStateException("Announcement destination is not configured. Run /setreleasechannel in the target Telegram topic first.");
+            }
+            chatId = state.chatId;
+            threadId = state.threadId;
+        }
+        telegram.sendMessage(chatId, message, threadId, null);
+    }
+
     public void setAnnouncementTarget(long chatId, long threadId) throws IOException {
         if (threadId <= 0) {
             throw new IllegalArgumentException("Telegram topic ID must be a positive integer.");
