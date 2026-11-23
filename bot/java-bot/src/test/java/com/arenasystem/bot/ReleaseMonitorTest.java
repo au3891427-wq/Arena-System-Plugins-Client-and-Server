@@ -87,6 +87,49 @@ class ReleaseMonitorTest {
     }
 
     @Test
+    void modAnnouncementIncludesAutomaticUpdaterNoteAndDirectDownloadLink() {
+        ReleaseService.PublishedRelease fabric = release(
+                455025800L, "ArenaSystem Client", "Fabric"
+        );
+        ReleaseService.ReleaseAsset clientJar = new ReleaseService.ReleaseAsset(
+                781772680L,
+                "ArenaSystem_Client-0.1.5.jar",
+                "uploaded",
+                "https://github.com/example/repo/releases/download/Fabric/ArenaSystem_Client-0.1.5.jar",
+                PUBLISHED_AT.plusSeconds(45)
+        );
+        ReleaseMonitor.PendingAsset pending =
+                new ReleaseMonitor.PendingAsset(fabric, clientJar);
+
+        String message = ReleaseMonitor.buildMessage(List.of(pending));
+
+        assertTrue(message.contains("MOD Client direncanakan akan dilengkapi updater otomatis."));
+        assertTrue(message.contains("kalau ingin mengunduhnya langsung:"));
+        assertTrue(message.contains(clientJar.downloadUrl()));
+    }
+
+    @Test
+    void pluginAnnouncementDoesNotShowClientUpdaterNote() {
+        ReleaseService.PublishedRelease bukkit = release(
+                455024822L, "ArenaSystem Server", "Bukkit"
+        );
+        ReleaseService.ReleaseAsset serverJar = new ReleaseService.ReleaseAsset(
+                781850857L,
+                "arenaSystem_Bukkit-0.2.8.9.jar",
+                "uploaded",
+                "https://github.com/example/repo/releases/download/Bukkit/arenaSystem_Bukkit-0.2.8.9.jar",
+                PUBLISHED_AT.plusSeconds(45)
+        );
+
+        String message = ReleaseMonitor.buildMessage(List.of(
+                new ReleaseMonitor.PendingAsset(bukkit, serverJar)
+        ));
+
+        assertFalse(message.contains("updater otomatis"));
+        assertFalse(message.contains("mengunduhnya langsung"));
+    }
+
+    @Test
     void batchQuietPeriodIsFiveSecondsAndHasBoundedMaximumWindow() {
         assertEquals(5, ReleaseMonitor.BATCH_QUIET_PERIOD.toSeconds());
         assertEquals(20, ReleaseMonitor.MAX_BATCH_WINDOW.toSeconds());
