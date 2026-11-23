@@ -29,6 +29,6 @@ class AnnouncementTextTest {
 
     @Test
     void rejectsNullByte() {
-        assertThrows(IllegalArgumentException.class, () -> AnnouncementText.normalize("hello\u0000world"));
+        assertThrows(IllegalArgumentException.class, () -> AnnouncementText.normalize("hello" + (char) 0 + "world"));
     }
 }
