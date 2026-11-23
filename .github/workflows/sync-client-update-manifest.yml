@@ -3,6 +3,11 @@ name: Sync ArenaSystem Client Update Manifest
 on:
   release:
     types: [published]
+  pull_request:
+    paths:
+      - ".github/workflows/sync-client-update-manifest.yml"
+      - ".github/scripts/sync-client-update-manifest.sh"
+      - "README.md"
   workflow_dispatch:
     inputs:
       release_tag:
@@ -14,6 +19,17 @@ permissions:
   contents: read
 
 jobs:
+  validate:
+    name: Validate workflow and manifest script
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check manifest sync script syntax
+        run: bash -n .github/scripts/sync-client-update-manifest.sh
+      - name: Parse workflow YAML
+        run: ruby -e 'require "yaml"; YAML.load_file(".github/workflows/sync-client-update-manifest.yml"); puts "Workflow YAML parsed successfully."'
+
   sync-client-manifest:
     name: Verify release assets and publish update manifest
     if: >-
@@ -39,144 +55,4 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           EVENT_RELEASE_TAG: ${{ github.event.release.tag_name }}
           INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
-        run: |
-          set -euo pipefail
-
-          if [[ "$EVENT_NAME" == "release" ]]; then
-            release_tag="$EVENT_RELEASE_TAG"
-          else
-            release_tag="$INPUT_RELEASE_TAG"
-          fi
-
-          if [[ ! "$release_tag" =~ ^[A-Za-z0-9._-]{1,128}$ ]]; then
-            echo "::error::Invalid release tag."
-            exit 1
-          fi
-
-          release_json="$(gh release view "$release_tag" --repo "$GITHUB_REPOSITORY" --json tagName,isDraft,isPrerelease,assets)"
-          if [[ "$(jq -r '.tagName' <<< "$release_json")" != "$release_tag" ]]; then
-            echo "::error::GitHub returned a different release tag."
-            exit 1
-          fi
-          if [[ "$(jq -r '.isDraft' <<< "$release_json")" == "true" ||
-                "$(jq -r '.isPrerelease' <<< "$release_json")" == "true" ]]; then
-            echo "::error::Only published stable releases can update the manifest."
-            exit 1
-          fi
-
-          client_count="$(jq '[.assets[].name | select(test("^ArenaSystem_Client-[0-9]+\\.[0-9]+\\.[0-9]+\\.jar$"))] | length' <<< "$release_json")"
-          helper_count="$(jq '[.assets[].name | select(. == "ArenaSystem_Client_Updater-0.1.0.jar")] | length' <<< "$release_json")"
-          if [[ "$client_count" != "1" || "$helper_count" != "1" ]]; then
-            echo "::error::Release must contain exactly one ArenaSystem_Client-X.Y.Z.jar and one ArenaSystem_Client_Updater-0.1.0.jar."
-            exit 1
-          fi
-
-          client_name="$(jq -r '[.assets[].name | select(test("^ArenaSystem_Client-[0-9]+\\.[0-9]+\\.[0-9]+\\.jar$"))][0]' <<< "$release_json")"
-          helper_name="ArenaSystem_Client_Updater-0.1.0.jar"
-          version="${client_name#ArenaSystem_Client-}"
-          version="${version%.jar}"
-          if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-            echo "::error::Client asset has an invalid stable semantic version."
-            exit 1
-          fi
-
-          asset_dir="$RUNNER_TEMP/arenasystem-client-release"
-          mkdir -p "$asset_dir"
-          gh release download "$release_tag" --repo "$GITHUB_REPOSITORY" \
-            --pattern "$client_name" --pattern "$helper_name" --dir "$asset_dir"
-
-          client_file="$asset_dir/$client_name"
-          helper_file="$asset_dir/$helper_name"
-          [[ -s "$client_file" ]] || { echo "::error::Client JAR download is missing or empty."; exit 1; }
-          [[ -s "$helper_file" ]] || { echo "::error::Updater helper download is missing or empty."; exit 1; }
-
-          metadata_file="$RUNNER_TEMP/fabric.mod.json"
-          unzip -p "$client_file" fabric.mod.json > "$metadata_file"
-          [[ -s "$metadata_file" ]] || { echo "::error::Client JAR does not contain fabric.mod.json."; exit 1; }
-
-          mod_id="$(jq -r '.id // empty' "$metadata_file")"
-          mod_version="$(jq -r '.version // empty' "$metadata_file")"
-          minecraft_dependency="$(jq -r '.depends.minecraft // empty' "$metadata_file")"
-          loader_dependency="$(jq -r '.depends.fabricloader // empty' "$metadata_file")"
-          loader_version="${loader_dependency#>=}"
-          java_dependency="$(jq -r '.depends.java // empty' "$metadata_file")"
-
-          if [[ "$mod_id" != "arstm_client0qb201" ||
-                "$mod_version" != "$version" ||
-                ! "$minecraft_dependency" =~ ^=[0-9]+\.[0-9]+([.][0-9]+)?$ ||
-                "$loader_version" == "$loader_dependency" ||
-                ! "$loader_version" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ||
-                "$java_dependency" != ">=25" ]]; then
-            echo "::error::Client JAR metadata does not match the expected ArenaSystem Fabric client release."
-            exit 1
-          fi
-
-          minecraft_version="${minecraft_dependency#=}"
-          client_hash="$(sha256sum "$client_file" | cut -d ' ' -f 1)"
-          helper_hash="$(sha256sum "$helper_file" | cut -d ' ' -f 1)"
-          if [[ ! "$client_hash" =~ ^[a-f0-9]{64}$ || ! "$helper_hash" =~ ^[a-f0-9]{64}$ ]]; then
-            echo "::error::Could not calculate valid SHA-256 hashes."
-            exit 1
-          fi
-
-          download_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$release_tag/$client_name"
-          manifest_path="arstm-client0qb201-update-manifest.json"
-          manifest_tmp="$RUNNER_TEMP/client-update-manifest.json"
-          jq -n \
-            --arg releaseTag "$release_tag" \
-            --arg version "$version" \
-            --arg minecraft "$minecraft_version" \
-            --arg loaderVersion "$loader_version" \
-            --arg downloadUrl "$download_url" \
-            --arg sha256 "$client_hash" \
-            --arg helperSha256 "$helper_hash" \
-            '{
-              schemaVersion: 1,
-              channel: "stable",
-              modId: "arstm_client0qb201",
-              version: $version,
-              minecraft: $minecraft,
-              loader: "fabric",
-              loaderVersion: $loaderVersion,
-              releaseTag: $releaseTag,
-              downloadUrl: $downloadUrl,
-              sha256: $sha256,
-              helperSha256: $helperSha256
-            }' > "$manifest_tmp"
-
-          if [[ -f "$manifest_path" ]]; then
-            current_version="$(jq -r '.version // empty' "$manifest_path")"
-            current_hash="$(jq -r '.sha256 // empty' "$manifest_path")"
-            current_helper_hash="$(jq -r '.helperSha256 // empty' "$manifest_path")"
-
-            if [[ -n "$current_version" ]]; then
-              if [[ "$current_version" == "$version" ]]; then
-                if [[ "$current_hash" == "$client_hash" &&
-                      "$current_helper_hash" == "$helper_hash" ]]; then
-                  echo "Manifest already points to the same verified client and helper artifacts."
-                  exit 0
-                fi
-                echo "::error::Refusing to replace stable version $version with different artifact bytes."
-                exit 1
-              fi
-
-              highest="$(printf '%s\n%s\n' "$current_version" "$version" | sort -V | tail -n 1)"
-              if [[ "$highest" == "$current_version" ]]; then
-                echo "::error::Refusing to move the stable update manifest backwards from $current_version to $version."
-                exit 1
-              fi
-            fi
-          fi
-
-          cp "$manifest_tmp" "$manifest_path"
-          jq -e '.schemaVersion == 1 and .channel == "stable" and .modId == "arstm_client0qb201"' "$manifest_path" >/dev/null
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$manifest_path"
-          if git diff --cached --quiet; then
-            echo "No manifest changes to commit."
-            exit 0
-          fi
-          git commit -m "Publish ArenaSystem Client $version update manifest"
-          git push origin HEAD:main
+        run: bash .github/scripts/sync-client-update-manifest.sh
