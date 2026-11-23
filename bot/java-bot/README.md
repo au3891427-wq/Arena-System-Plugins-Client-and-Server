@@ -11,7 +11,8 @@ A Java 21 Telegram bot with a local, retrieval-based ArenaSystem assistant. It d
 - Private chats can send questions directly; in group topics use /ask <question> or reply to a bot message.
 - /reset clears the user's short conversation context.
 - /privacy describes local processing and in-memory context.
-- Release announcements remain in the separate GitHub Actions workflow.
+- /setreleasechannel configures the current Telegram forum topic as the destination for later JAR upload announcements (group administrators only).
+- GitHub Actions announces stable Release publication. The Java service polls GitHub Releases for JAR assets uploaded after publication and announces each new asset once.
 
 ## Bahasa jawaban
 
@@ -67,7 +68,7 @@ Optional variables:
 | TELEGRAM_ALLOWED_CHAT_IDS | empty | Comma-separated chat allowlist; empty allows all chats |
 | PORT | Railway-provided | HTTP listener port |
 
-The service serves GET /healthz and POST /telegram/webhook. On startup it registers Telegram commands and sets the webhook automatically. Railway should route the public domain to the container's PORT.
+The service serves GET /healthz and POST /telegram/webhook. On startup it registers Telegram commands, sets the webhook automatically, and starts the release asset monitor. Attach a Railway persistent volume at `/data` and set `RELEASE_MONITOR_STATE_FILE=/data/release-monitor-state.json` before relying on the monitor in production. After deployment, run `/setreleasechannel` as a group administrator inside the forum topic that should receive asset announcements. The bot must be an administrator in that group so it can verify the caller's administrator status. Railway should route the public domain to the container's PORT.
 
 ## Knowledge base maintenance
 
@@ -81,6 +82,7 @@ Edit src/main/resources/knowledge/arenasystem.md only with information confirmed
 - Memory is lost when the service restarts.
 - The bot limits each user to 5 assistant requests per minute and the whole service to 40 per minute.
 - /latest and /downloads contact GitHub's public Releases API.
+- The release asset monitor uses GitHub's Releases API with ETag revalidation, checks at the configured interval, and stores processed asset IDs and the Telegram destination in the persistent state file.
 
 ## Tests
 
