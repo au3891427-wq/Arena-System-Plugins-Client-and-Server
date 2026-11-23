@@ -29,6 +29,9 @@ import java.util.regex.Pattern;
 public final class BotApplication {
     private static final System.Logger LOGGER = System.getLogger(BotApplication.class.getName());
     private static final String WEBHOOK_PATH = "/telegram/webhook";
+    private static final String ANNOUNCEMENT_PATH = "/api/announcement";
+    private static final int MAX_ANNOUNCEMENT_BYTES = 16 * 1024;
+    private static final int ANNOUNCEMENT_REQUESTS_PER_MINUTE = 5;
     private static final int MAX_WEBHOOK_BYTES = 1024 * 1024;
     private static final int MAX_MESSAGE_LENGTH = 3900;
     private static final int MAX_QUESTION_LENGTH = 1500;
@@ -53,6 +56,7 @@ public final class BotApplication {
     private final Set<String> allowedChats;
     private final ConcurrentHashMap<Long, List<Long>> userRequestTimes = new ConcurrentHashMap<>();
     private final List<Long> globalRequestTimes = new ArrayList<>();
+    private final List<Long> announcementRequestTimes = new ArrayList<>();
     private final Set<Long> processedUpdates = new LinkedHashSet<>();
 
     private BotApplication(AppConfig config) throws IOException {
@@ -70,6 +74,7 @@ public final class BotApplication {
         this.server = HttpServer.create(new InetSocketAddress("0.0.0.0", config.port()), 0);
         this.server.setExecutor(httpExecutor);
         this.server.createContext("/healthz", this::handleHealth);
+        this.server.createContext(ANNOUNCEMENT_PATH, this::handleAnnouncement);
         this.server.createContext(WEBHOOK_PATH, this::handleWebhook);
     }
 
@@ -124,9 +129,112 @@ public final class BotApplication {
                 .put("status", "ok")
                 .put("service", "arenasystem-telegram-bot")
                 .put("language", "Java 21")
-                .put("assistant", "local-bm25");
+                .put("assistant", "local-bm25")
+                .put("announcement_api_enabled", !config.announcementApiKey().isBlank());
         sendHttp(exchange, 200, mapper.writeValueAsString(status),
                 "application/json; charset=utf-8");
+    }
+
+
+    private void handleAnnouncement(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())
+                || !ANNOUNCEMENT_PATH.equals(exchange.getRequestURI().getPath())) {
+            sendHttp(exchange, 404, "Not found", "text/plain; charset=utf-8");
+            return;
+        }
+
+        if (config.announcementApiKey().isBlank()) {
+            sendAnnouncementResponse(exchange, 503, false,
+                    "Announcement API is not configured.");
+            return;
+        }
+
+        String authorization = exchange.getRequestHeaders().getFirst("Authorization");
+        if (authorization == null || !authorization.regionMatches(true, 0, "Bearer ", 0, 7)
+                || !constantTimeEquals(config.announcementApiKey(), authorization.substring(7).trim())) {
+            sendAnnouncementResponse(exchange, 401, false, "Unauthorized.");
+            return;
+        }
+
+        String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
+        if (contentType == null
+                || !"application/json".equalsIgnoreCase(contentType.split(";", 2)[0].trim())) {
+            sendAnnouncementResponse(exchange, 415, false, "Content-Type must be application/json.");
+            return;
+        }
+
+        byte[] body;
+        try (var input = exchange.getRequestBody()) {
+            body = input.readNBytes(MAX_ANNOUNCEMENT_BYTES + 1);
+        }
+        if (body.length > MAX_ANNOUNCEMENT_BYTES) {
+            sendAnnouncementResponse(exchange, 413, false, "Request body is too large.");
+            return;
+        }
+
+        JsonNode payload;
+        try {
+            payload = mapper.readTree(body);
+        } catch (Exception exception) {
+            sendAnnouncementResponse(exchange, 400, false, "Invalid JSON.");
+            return;
+        }
+        if (payload == null || !payload.path("text").isTextual()) {
+            sendAnnouncementResponse(exchange, 400, false, "JSON field 'text' must be a string.");
+            return;
+        }
+
+        final String announcement;
+        try {
+            announcement = AnnouncementText.normalize(payload.path("text").asText());
+        } catch (IllegalArgumentException exception) {
+            sendAnnouncementResponse(exchange, 400, false, exception.getMessage());
+            return;
+        }
+
+        if (!consumeAnnouncementRateLimit()) {
+            sendAnnouncementResponse(exchange, 429, false,
+                    "Rate limit exceeded. Wait one minute before sending another announcement.");
+            return;
+        }
+
+        try {
+            releaseMonitor.sendManualAnnouncement(announcement);
+            sendAnnouncementResponse(exchange, 200, true,
+                    "Announcement sent to the configured Telegram topic.");
+        } catch (IllegalStateException exception) {
+            sendAnnouncementResponse(exchange, 409, false, exception.getMessage());
+        } catch (Exception exception) {
+            LOGGER.log(System.Logger.Level.ERROR,
+                    "Manual Telegram announcement failed: " + exception.getMessage());
+            sendAnnouncementResponse(exchange, 502, false,
+                    "Telegram delivery failed. Check the bot logs and try again.");
+        }
+    }
+
+    private void sendAnnouncementResponse(
+            HttpExchange exchange,
+            int status,
+            boolean ok,
+            String message
+    ) throws IOException {
+        ObjectNode response = mapper.createObjectNode()
+                .put("ok", ok)
+                .put("message", message);
+        sendHttp(exchange, status, mapper.writeValueAsString(response),
+                "application/json; charset=utf-8");
+    }
+
+    private boolean consumeAnnouncementRateLimit() {
+        long now = System.currentTimeMillis();
+        synchronized (announcementRequestTimes) {
+            announcementRequestTimes.removeIf(time -> now - time >= RATE_WINDOW_MILLIS);
+            if (announcementRequestTimes.size() >= ANNOUNCEMENT_REQUESTS_PER_MINUTE) {
+                return false;
+            }
+            announcementRequestTimes.add(now);
+            return true;
+        }
     }
 
     private void handleWebhook(HttpExchange exchange) throws IOException {

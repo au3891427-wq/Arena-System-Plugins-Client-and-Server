@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArenaSystem Announcer</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { width: 360px; margin: 0; padding: 16px; box-sizing: border-box; }
+    h1 { font-size: 17px; margin: 0 0 5px; }
+    p { color: GrayText; font-size: 12px; line-height: 1.45; margin: 0 0 12px; }
+    label { display: block; font-size: 12px; font-weight: 650; margin: 12px 0 5px; }
+    input, textarea { width: 100%; box-sizing: border-box; border: 1px solid #8888; border-radius: 7px; padding: 8px; font: inherit; }
+    input { font-size: 12px; }
+    textarea { min-height: 190px; resize: vertical; font-size: 13px; line-height: 1.45; }
+    button { border: 0; border-radius: 7px; padding: 9px 11px; font-weight: 650; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: wait; }
+    .primary { width: 100%; background: #2563eb; color: white; margin-top: 9px; }
+    .secondary { background: #7772; color: inherit; }
+    .row { display: flex; gap: 8px; margin-top: 8px; }
+    .row button { flex: 1; }
+    #status { min-height: 18px; margin-top: 10px; font-size: 12px; white-space: pre-wrap; }
+    .hint { margin-top: 8px; }
+    .warning { color: #b45309; }
+  </style>
+</head>
+<body>
+  <h1>ArenaSystem Telegram Announcer</h1>
+  <p>Draft dari ChatGPT akan dikirim ke topic Telegram yang sudah diatur dengan <code>/setreleasechannel</code>.</p>
+
+  <label for="apiKey">API key</label>
+  <input id="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="Tempel API key">
+  <div class="row">
+    <button id="saveKey" class="secondary" type="button">Simpan API key</button>
+    <button id="loadLatest" class="secondary" type="button">Ambil jawaban ChatGPT</button>
+  </div>
+
+  <label for="message">Preview pesan Telegram</label>
+  <textarea id="message" placeholder="Draft pengumuman akan muncul di sini. Kamu juga bisa mengeditnya sebelum dikirim."></textarea>
+  <button id="send" class="primary" type="button">Kirim ke topic Update</button>
+  <div id="status" role="status" aria-live="polite"></div>
+  <p class="hint">Pengiriman memerlukan klik konfirmasi. Kunci disimpan di penyimpanan lokal browser, bukan di halaman ChatGPT.</p>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -11,6 +11,7 @@ public record AppConfig(
         String telegramWebhookSecret,
         String publicBaseUrl,
         String githubRepository,
+        String announcementApiKey,
         Set<String> allowedChatIds,
         String releaseMonitorStateFile,
         int releaseMonitorIntervalSeconds
@@ -24,6 +25,7 @@ public record AppConfig(
                 "GITHUB_REPOSITORY",
                 "au3891427-wq/Arena-System-Plugins-Client-and-Server"
         );
+        String announcementApiKey = value("ANNOUNCEMENT_API_KEY", "");
         String releaseStateFile = value(
                 "RELEASE_MONITOR_STATE_FILE",
                 "data/release-monitor-state.json"
@@ -39,7 +41,7 @@ public record AppConfig(
                 .collect(Collectors.toUnmodifiableSet());
 
         AppConfig config = new AppConfig(
-                port, token, secret, publicUrl, repository, allowedIds,
+                port, token, secret, publicUrl, repository, announcementApiKey, allowedIds,
                 releaseStateFile, releaseMonitorIntervalSeconds
         );
         config.validate();
@@ -102,6 +104,9 @@ public record AppConfig(
         }
         if (!githubRepository.matches("[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")) {
             throw new IllegalArgumentException("GITHUB_REPOSITORY must use owner/repository format.");
+        }
+        if (!announcementApiKey.isBlank() && announcementApiKey.length() < 32) {
+            throw new IllegalArgumentException("ANNOUNCEMENT_API_KEY must contain at least 32 characters when enabled.");
         }
         if (releaseMonitorStateFile.isBlank()) {
             throw new IllegalArgumentException("RELEASE_MONITOR_STATE_FILE must not be blank.");
