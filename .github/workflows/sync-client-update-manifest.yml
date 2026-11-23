@@ -98,19 +98,20 @@ jobs:
           mod_version="$(jq -r '.version // empty' "$metadata_file")"
           minecraft_dependency="$(jq -r '.depends.minecraft // empty' "$metadata_file")"
           loader_dependency="$(jq -r '.depends.fabricloader // empty' "$metadata_file")"
+          loader_version="${loader_dependency#>=}"
           java_dependency="$(jq -r '.depends.java // empty' "$metadata_file")"
 
           if [[ "$mod_id" != "arstm_client0qb201" ||
                 "$mod_version" != "$version" ||
                 ! "$minecraft_dependency" =~ ^=[0-9]+\.[0-9]+([.][0-9]+)?$ ||
-                ! "$loader_dependency" =~ ^>=[0-9]+\.[0-9]+(\.[0-9]+)?$ ||
+                "$loader_version" == "$loader_dependency" ||
+                ! "$loader_version" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ||
                 "$java_dependency" != ">=25" ]]; then
             echo "::error::Client JAR metadata does not match the expected ArenaSystem Fabric client release."
             exit 1
           fi
 
           minecraft_version="${minecraft_dependency#=}"
-          loader_version="${loader_dependency#>=}"
           client_hash="$(sha256sum "$client_file" | cut -d ' ' -f 1)"
           helper_hash="$(sha256sum "$helper_file" | cut -d ' ' -f 1)"
           if [[ ! "$client_hash" =~ ^[a-f0-9]{64}$ || ! "$helper_hash" =~ ^[a-f0-9]{64}$ ]]; then
