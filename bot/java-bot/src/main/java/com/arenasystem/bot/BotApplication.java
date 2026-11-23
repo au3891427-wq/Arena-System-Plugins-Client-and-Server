@@ -311,7 +311,7 @@ public final class BotApplication {
             case "menu:downloads" -> sendLatestRelease(chatId, threadId, true);
             case "menu:help" -> sendHelp(chatId, threadId);
             case "menu:ask" -> reply(chatId,
-                    "🤖 Kirim pertanyaan di chat pribadi, atau gunakan /ask <pertanyaan> di topic grup.",
+                    "🤖 Kirim pertanyaan di chat pribadi, atau gunakan /ask <pertanyaan> di topik grup.",
                     threadId, null);
             default -> reply(chatId, "Aksi menu tidak tersedia. Gunakan /start.",
                     threadId, null);
@@ -332,7 +332,7 @@ public final class BotApplication {
 
     private void sendHelp(long chatId, Long threadId) throws Exception {
         String text = String.join("\n",
-                "📚 ARENASYSTEM HELP CENTER",
+                "📚 PUSAT BANTUAN ARENASYSTEM",
                 "",
                 "/start — Buka menu utama",
                 "/latest — Rilis stabil terbaru",
@@ -364,7 +364,7 @@ public final class BotApplication {
 
         if (latest.isEmpty()) {
             reply(chatId,
-                    "📦 ARENASYSTEM STABLE RELEASES\n\nBelum ada rilis stabil dengan file JAR yang diunggah.\n\n" +
+                    "📦 RILIS STABIL ARENASYSTEM\n\nBelum ada rilis stabil dengan file JAR yang diunggah.\n\n" +
                             releases.releasesUrl(),
                     threadId, null);
             return;
@@ -372,11 +372,11 @@ public final class BotApplication {
 
         ReleaseService.Release release = latest.get();
         StringBuilder text = new StringBuilder(downloadsOnly
-                ? "⬇️ ARENASYSTEM DOWNLOADS\n\n"
-                : "📦 ARENASYSTEM — LATEST STABLE\n\n");
+                ? "⬇️ UNDUHAN ARENASYSTEM\n\n"
+                : "📦 ARENASYSTEM — RILIS STABIL TERBARU\n\n");
         text.append(release.name()).append("\n");
-        text.append("Version: ").append(release.tag()).append("\n");
-        text.append("Published: ").append(formatDate(release.publishedAt())).append("\n");
+        text.append("Versi: ").append(release.tag()).append("\n");
+        text.append("Diterbitkan: ").append(formatDate(release.publishedAt())).append("\n");
 
         if (!downloadsOnly) {
             text.append("\nCatatan rilis:\n");
@@ -455,15 +455,15 @@ public final class BotApplication {
 
     private String privacyText() {
         return String.join("\n",
-                "🔒 PRIVACY",
+                "🔒 PRIVASI",
                 "",
                 "Pertanyaan diproses oleh mesin pencarian dokumentasi lokal berbasis Java (BM25).",
                 "Bot tidak mengirim pertanyaan ke OpenAI, Gemini, atau layanan model AI eksternal.",
                 "Konteks percakapan singkat disimpan di memori proses hingga 30 menit tanpa aktivitas dan dapat dihapus dengan /reset.",
-                "Konteks hilang saat service restart.",
+                "Konteks hilang saat layanan dimulai ulang.",
                 "Untuk fitur rilis dan unduhan, bot mengakses GitHub Releases API.",
                 "",
-                "Jangan kirim password, token bot, API key, atau rahasia pribadi."
+                "Jangan kirim kata sandi, token bot, API key, atau rahasia pribadi."
         );
     }
 
@@ -485,11 +485,11 @@ public final class BotApplication {
     private ObjectNode helpKeyboard() {
         ArrayNode rows = mapper.createArrayNode();
         rows.add(buttonRow(
-                button("📦 Latest Release", "menu:latest"),
-                button("⬇️ Downloads", "menu:downloads")
+                button("📦 Rilis Terbaru", "menu:latest"),
+                button("⬇️ Unduhan", "menu:downloads")
         ));
         rows.add(buttonRow(
-                button("🤖 Ask Assistant", "menu:ask"),
+                button("🤖 Tanya Asisten", "menu:ask"),
                 button("🏠 Menu Utama", "menu:home")
         ));
         ObjectNode markup = mapper.createObjectNode();
