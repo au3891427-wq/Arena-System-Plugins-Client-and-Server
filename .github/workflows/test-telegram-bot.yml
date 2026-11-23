@@ -1,0 +1,42 @@
+name: Test Telegram Bot
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "bot/telegram-bot/**"
+      - ".github/workflows/test-telegram-bot.yml"
+  pull_request:
+    paths:
+      - "bot/telegram-bot/**"
+      - ".github/workflows/test-telegram-bot.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bot/telegram-bot
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check JavaScript syntax
+        run: |
+          node --check src/index.js
+          node --check src/ai.js
+          node --check src/github.js
+          node --check src/telegram.js
+          node --check src/config.js
+
+      - name: Run unit tests
+        run: npm test
