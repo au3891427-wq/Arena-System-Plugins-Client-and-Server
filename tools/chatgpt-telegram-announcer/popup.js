@@ -1,4 +1,5 @@
 const API_URL = "https://arenasystem-telegram-bot-production.up.railway.app/api/announcement";
+const CHATGPT_HOSTS = new Set(["chatgpt.com", "www.chatgpt.com", "chat.openai.com"]);
 
 const apiKeyInput = document.getElementById("apiKey");
 const messageInput = document.getElementById("message");
@@ -23,47 +24,95 @@ saveKeyButton.addEventListener("click", async () => {
     setStatus("API key belum valid. Pastikan kamu menyalin seluruh nilainya.", true);
     return;
   }
-  await chrome.storage.local.set({ announcementApiKey: apiKey });
-  setStatus("API key tersimpan secara lokal di browser.");
+
+  try {
+    await chrome.storage.local.set({ announcementApiKey: apiKey });
+    setStatus("API key tersimpan secara lokal di browser.");
+  } catch (error) {
+    setStatus("Gagal menyimpan API key: " + error.message, true);
+  }
 });
 
 loadLatestButton.addEventListener("click", async () => {
   loadLatestButton.disabled = true;
   setStatus("Mengambil jawaban ChatGPT terakhir…");
+
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id || !tab.url?.startsWith("https://chatgpt.com/")) {
-      throw new Error("Buka percakapan ChatGPT terlebih dahulu.");
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (!tab?.id || !tab.url) {
+      throw new Error("Tab aktif tidak ditemukan. Buka percakapan ChatGPT lalu coba lagi.");
     }
+
+    let activeUrl;
+    try {
+      activeUrl = new URL(tab.url);
+    } catch {
+      throw new Error("Alamat tab aktif tidak dapat dibaca. Buka percakapan ChatGPT lalu coba lagi.");
+    }
+
+    if (!CHATGPT_HOSTS.has(activeUrl.hostname)) {
+      throw new Error("Tab aktif saat ini bukan ChatGPT (" + activeUrl.hostname + "). Buka chatgpt.com di tab ini, lalu klik Ambil jawaban ChatGPT lagi.");
+    }
+
     const results = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: () => {
-        const selected = window.getSelection()?.toString().trim();
-        if (selected) return selected;
+        const selectedText = window.getSelection()?.toString().trim();
+        if (selectedText) {
+          return { text: selectedText, source: "selected-text" };
+        }
 
-        const messages = Array.from(
+        const readText = (element) => (element?.innerText || element?.textContent || "").trim();
+
+        // Selector utama pada container pesan ChatGPT.
+        const assistantMessages = Array.from(
           document.querySelectorAll('[data-message-author-role="assistant"]')
         );
-        for (let index = messages.length - 1; index >= 0; index -= 1) {
-          const message = messages[index];
-          const blocks = Array.from(message.querySelectorAll("pre code, pre"));
-          const candidate = blocks.length
-            ? blocks[blocks.length - 1].innerText
-            : message.innerText;
-          if (candidate?.trim()) return candidate.trim();
+
+        for (let index = assistantMessages.length - 1; index >= 0; index -= 1) {
+          const text = readText(assistantMessages[index]);
+          if (text) return { text, source: "assistant-message" };
         }
-        return "";
+
+        // Fallback untuk layout yang membungkus setiap giliran percakapan dengan test-id.
+        const turns = Array.from(document.querySelectorAll('main [data-testid^="conversation-turn-"]'));
+        for (let index = turns.length - 1; index >= 0; index -= 1) {
+          const turn = turns[index];
+          const assistantNode = turn.matches('[data-message-author-role="assistant"]')
+            ? turn
+            : turn.querySelector('[data-message-author-role="assistant"]');
+          const text = readText(assistantNode);
+          if (text) return { text, source: "assistant-turn" };
+        }
+
+        // Fallback terakhir untuk Markdown di area percakapan utama.
+        const markdownBlocks = Array.from(document.querySelectorAll('main .markdown.prose, main .markdown'));
+        for (let index = markdownBlocks.length - 1; index >= 0; index -= 1) {
+          const text = readText(markdownBlocks[index]);
+          if (text) return { text, source: "markdown-fallback" };
+        }
+
+        return { text: "", source: "not-found" };
       }
     });
 
-    const latestText = results?.[0]?.result?.trim() ?? "";
+    const extracted = results?.[0]?.result;
+    const latestText = typeof extracted === "string" ? extracted.trim() : extracted?.text?.trim();
     if (!latestText) {
-      throw new Error("Jawaban ChatGPT tidak ditemukan. Pilih teks jawaban secara manual, lalu coba lagi.");
+      throw new Error("Elemen jawaban ChatGPT tidak ditemukan. Pastikan percakapan sudah selesai dimuat. Alternatif: blok teks jawaban di halaman ChatGPT, lalu klik tombol ini lagi.");
     }
+
     messageInput.value = latestText;
-    setStatus("Draft berhasil diambil. Periksa dan edit pesannya sebelum mengirim.");
+    messageInput.dispatchEvent(new Event("input", { bubbles: true }));
+    const sourceLabel = extracted?.source === "selected-text" ? "teks yang dipilih" : "jawaban ChatGPT terakhir";
+    setStatus("Berhasil mengambil " + sourceLabel + ". Periksa dan edit preview sebelum mengirim.");
   } catch (error) {
-    setStatus(error.message || "Gagal mengambil jawaban ChatGPT.", true);
+    const message = error?.message || String(error);
+    if (message.includes("Cannot access contents of the page") || message.includes("cannot be scripted")) {
+      setStatus("Chrome menolak akses ke tab ini. Pastikan tab ChatGPT aktif, lalu reload halaman ChatGPT dan coba lagi.", true);
+    } else {
+      setStatus(message, true);
+    }
   } finally {
     loadLatestButton.disabled = false;
   }
@@ -72,6 +121,7 @@ loadLatestButton.addEventListener("click", async () => {
 sendButton.addEventListener("click", async () => {
   const apiKey = apiKeyInput.value.trim();
   const text = messageInput.value.trim();
+
   if (apiKey.length < 32) {
     setStatus("Simpan API key yang valid terlebih dahulu.", true);
     return;
@@ -84,25 +134,29 @@ sendButton.addEventListener("click", async () => {
     setStatus("Pesan terlalu panjang. Maksimal 3.900 karakter.", true);
     return;
   }
-  const preview = text.length > 700 ? `${text.slice(0, 700)}…` : text;
-  if (!window.confirm(`Kirim pesan ini ke topic Update Telegram?\n\n${preview}`)) return;
+
+  const preview = text.length > 700 ? text.slice(0, 700) + "…" : text;
+  if (!window.confirm("Kirim pesan ini ke topic Update Telegram?\n\n" + preview)) return;
 
   sendButton.disabled = true;
   setStatus("Mengirim pengumuman ke Telegram…");
+
   try {
     await chrome.storage.local.set({ announcementApiKey: apiKey });
     const response = await fetch(API_URL, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${apiKey}`,
+        "Authorization": "Bearer " + apiKey,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ text })
     });
+
     const result = await response.json().catch(() => ({}));
     if (!response.ok || result.ok !== true) {
-      throw new Error(result.message || `Pengiriman gagal (HTTP ${response.status}).`);
+      throw new Error(result.message || "Pengiriman gagal (HTTP " + response.status + ").");
     }
+
     setStatus("Berhasil! Bot sudah mengirim pengumuman ke topic Telegram yang dikonfigurasi.");
   } catch (error) {
     setStatus(error.message || "Terjadi kesalahan saat mengirim pengumuman.", true);
@@ -111,4 +165,4 @@ sendButton.addEventListener("click", async () => {
   }
 });
 
-loadSettings().catch(error => setStatus(error.message, true));
+loadSettings().catch(error => setStatus(error.message || String(error), true));
