@@ -59,7 +59,7 @@ The Telegram workflow only announces releases published in this repository. It d
 
 ## Telegram Assistant
 
-The repository includes the ArenaSystem Telegram assistant in [bot/telegram-bot](bot/telegram-bot/README.md). It adds an interactive Telegram menu, stable release/download browsing, and an optional AI support chat. See the bot README for deployment and environment-variable setup.
+The active ArenaSystem Telegram assistant is the Java 21 implementation in [bot/java-bot](bot/java-bot/README.md). It provides an interactive Telegram menu, stable release/download browsing, and a local BM25 knowledge assistant that does not require a paid AI API. The earlier Node.js prototype remains in [bot/telegram-bot](bot/telegram-bot/README.md) for reference.
 
 The existing [Telegram Release Announcer workflow](.github/workflows/telegram-release-notify.yml) continues to publish stable-release announcements to the configured Update forum topic.
 
