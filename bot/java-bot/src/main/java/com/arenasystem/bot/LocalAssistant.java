@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
  * from those sections and therefore cannot invent undocumented project facts.
  */
 public final class LocalAssistant {
-    private record Document(String title, String body, String source) {}
+    private record Document(String title, String body, String searchHints, String source) {}
     private record Ranked(Document document, double score, int matchedTerms) {}
     private record Conversation(String previousQuestion, String previousAnswer, long updatedAt) {}
 
@@ -72,6 +72,7 @@ public final class LocalAssistant {
             Map.entry("unduh", Set.of("download", "jar", "rilis")),
             Map.entry("download", Set.of("unduh", "jar", "release")),
             Map.entry("rilis", Set.of("release", "version")),
+            Map.entry("instal", Set.of("install", "instalasi", "pemasangan", "installation")),
             Map.entry("instalasi", Set.of("installation", "install", "setup")),
             Map.entry("install", Set.of("instalasi", "installation", "setup")),
             Map.entry("kompatibilitas", Set.of("compatibility", "version")),
@@ -168,14 +169,18 @@ public final class LocalAssistant {
     private List<Ranked> rank(Set<String> queryTerms, List<String> originalTerms) {
         int documentCount = documents.size();
         double averageLength = documents.stream()
-                .mapToInt(document -> tokenize(document.title() + " " + document.body()).size())
+                .mapToInt(document -> tokenize(
+                        document.title() + " " + document.body() + " " + document.searchHints()
+                ).size())
                 .average()
                 .orElse(1.0);
 
         Map<String, Integer> documentFrequency = new HashMap<>();
         List<List<String>> allTokens = new ArrayList<>();
         for (Document document : documents) {
-            List<String> tokens = tokenize(document.title() + " " + document.body());
+            List<String> tokens = tokenize(
+                    document.title() + " " + document.body() + " " + document.searchHints()
+            );
             allTokens.add(tokens);
             for (String term : new HashSet<>(tokens)) {
                 documentFrequency.merge(term, 1, Integer::sum);
@@ -304,27 +309,42 @@ public final class LocalAssistant {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream))) {
             String title = "ArenaSystem";
             StringBuilder body = new StringBuilder();
+            StringBuilder searchHints = new StringBuilder();
             String line;
             while ((line = reader.readLine()) != null) {
                 if (line.startsWith("## ")) {
-                    addDocument(result, title, body);
+                    addDocument(result, title, body, searchHints);
                     title = line.substring(3).trim();
                     body = new StringBuilder();
+                    searchHints = new StringBuilder();
+                } else if (line.startsWith("Pertanyaan terkait:")) {
+                    searchHints.append(line.substring("Pertanyaan terkait:".length()).trim())
+                            .append(' ');
                 } else if (!line.startsWith("# ") && !line.isBlank()) {
                     body.append(line.trim()).append(' ');
                 }
             }
-            addDocument(result, title, body);
+            addDocument(result, title, body, searchHints);
         } catch (IOException exception) {
             throw new IllegalStateException("Could not read local ArenaSystem knowledge.", exception);
         }
         return List.copyOf(result);
     }
 
-    private static void addDocument(List<Document> result, String title, StringBuilder body) {
+    private static void addDocument(
+            List<Document> result,
+            String title,
+            StringBuilder body,
+            StringBuilder searchHints
+    ) {
         String content = body.toString().trim();
         if (!content.isBlank()) {
-            result.add(new Document(title, content, "knowledge/arenasystem.md"));
+            result.add(new Document(
+                    title,
+                    content,
+                    searchHints.toString().trim(),
+                    "knowledge/arenasystem.md"
+            ));
         }
     }
 }
