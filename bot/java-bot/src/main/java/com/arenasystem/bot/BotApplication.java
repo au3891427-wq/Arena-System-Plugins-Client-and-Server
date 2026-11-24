@@ -469,11 +469,35 @@ public final class BotApplication {
             } catch (Exception exception) {
                 LOGGER.log(System.Logger.Level.WARNING,
                         "9Router request failed; using local BM25 answer: " +
-                                exception.getClass().getSimpleName());
+                                describeNineRouterFailure(exception));
                 answer = aiFallbackAnswer(localAnswer);
             }
         }
         reply(chatId, answer, threadId, null);
+    }
+
+    /**
+     * Reports only safe, client-generated diagnostics. Never logs upstream response bodies,
+     * request headers, API keys, prompts, or provider credentials.
+     */
+    private static String describeNineRouterFailure(Exception exception) {
+        String message = exception.getMessage();
+        if (message != null && (
+                message.matches("9Router returned HTTP [1-5]\\d{2}\\.")
+                        || message.equals("9Router returned an empty answer.")
+                        || message.equals("9Router returned an empty response.")
+                        || message.equals("9Router response did not contain a completion choice.")
+                        || message.equals("9Router returned malformed streaming data.")
+                        || message.equals("9Router returned neither JSON nor a valid streaming response.")
+        )) {
+            return message;
+        }
+
+        Throwable rootCause = exception;
+        while (rootCause.getCause() != null && rootCause.getCause() != rootCause) {
+            rootCause = rootCause.getCause();
+        }
+        return rootCause.getClass().getSimpleName();
     }
 
     private static String aiFallbackAnswer(String localAnswer) {
