@@ -102,6 +102,69 @@ class NineRouterClientTest {
     }
 
     @Test
+    void reportsSafeModelNotFoundDetailsForHttpErrors() throws Exception {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            byte[] body = """
+                    {"error":{"message":"The model Telegram_Bot does not exist.","type":"invalid_request_error","code":"model_not_found"}}
+                    """.getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(404, body.length);
+            try (var output = exchange.getResponseBody()) {
+                output.write(body);
+            }
+        });
+        server.start();
+
+        NineRouterClient client = new NineRouterClient(
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/v1",
+                "test-secret",
+                "Telegram_Bot",
+                10,
+                new ObjectMapper()
+        );
+
+        IOException exception = assertThrows(
+                IOException.class,
+                () -> client.answer("Pertanyaan", "Konteks")
+        );
+        assertEquals(
+                "9Router returned HTTP 404 (model_not_found: The model Telegram_Bot does not exist.).",
+                exception.getMessage()
+        );
+    }
+
+    @Test
+    void doesNotExposeArbitraryUpstreamErrorMessages() throws Exception {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            byte[] body = """
+                    {"error":{"message":"Sensitive prompt echo: do not log this text or token=secret-value","code":"bad_request"}}
+                    """.getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(400, body.length);
+            try (var output = exchange.getResponseBody()) {
+                output.write(body);
+            }
+        });
+        server.start();
+
+        NineRouterClient client = new NineRouterClient(
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/v1",
+                "test-secret",
+                "Telegram_Bot",
+                10,
+                new ObjectMapper()
+        );
+
+        IOException exception = assertThrows(
+                IOException.class,
+                () -> client.answer("Pertanyaan", "Konteks")
+        );
+        assertEquals("9Router returned HTTP 400 (bad_request).", exception.getMessage());
+        assertTrue(!exception.getMessage().contains("secret-value"));
+        assertTrue(!exception.getMessage().contains("Sensitive prompt"));
+    }
+
+    @Test
     void extractsTextPartsFromJsonArrayContent() throws Exception {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/chat/completions", exchange -> {
