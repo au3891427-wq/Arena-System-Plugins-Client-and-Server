@@ -74,7 +74,7 @@ public final class NineRouterClient {
 
         String context = knowledgeContext == null ? "" : knowledgeContext;
         context = context.replace(
-                "\\n\\nCatatan: Aku menggunakan pencarian dokumentasi lokal, bukan model generatif. Jika detailnya belum terdokumentasi, aku tidak akan menebaknya.",
+                "\n\nCatatan: Aku menggunakan pencarian dokumentasi lokal, bukan model generatif. Jika detailnya belum terdokumentasi, aku tidak akan menebaknya.",
                 ""
         );
         String userContent = """
