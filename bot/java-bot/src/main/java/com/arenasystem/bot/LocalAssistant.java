@@ -72,6 +72,7 @@ public final class LocalAssistant {
             Map.entry("unduh", Set.of("download", "jar", "rilis")),
             Map.entry("download", Set.of("unduh", "jar", "release")),
             Map.entry("rilis", Set.of("release", "version")),
+            Map.entry("instal", Set.of("install", "instalasi", "pemasangan", "installation")),
             Map.entry("instalasi", Set.of("installation", "install", "setup")),
             Map.entry("install", Set.of("instalasi", "installation", "setup")),
             Map.entry("kompatibilitas", Set.of("compatibility", "version")),
