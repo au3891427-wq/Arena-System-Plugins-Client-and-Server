@@ -483,7 +483,7 @@ public final class BotApplication {
     private static String describeNineRouterFailure(Exception exception) {
         String message = exception.getMessage();
         if (message != null && (
-                message.matches("9Router returned HTTP [1-5]\\d{2}(?: \\([A-Za-z0-9_.:/() -]{1,220}\\))?\\.")
+                message.matches("9Router returned HTTP [1-5]\\d{2}(?: \\([A-Za-z0-9_.,=;:/() -]{1,220}\\))?\\.")
                         || message.equals("9Router returned an empty answer.")
                         || message.equals("9Router returned an empty response.")
                         || message.equals("9Router response did not contain a completion choice.")
