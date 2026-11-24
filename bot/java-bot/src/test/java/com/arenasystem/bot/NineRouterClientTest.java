@@ -165,6 +165,94 @@ class NineRouterClientTest {
     }
 
     @Test
+    void checksCloudModelCatalogWhenCompletionReturnsNotFound() throws Exception {
+        AtomicReference<String> modelsAuthorization = new AtomicReference<>();
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            byte[] body = """
+                    {"error":{"message":"No active credentials for provider: test-provider","type":"invalid_request_error","code":"model_not_found"}}
+                    """.getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(404, body.length);
+            try (var output = exchange.getResponseBody()) {
+                output.write(body);
+            }
+        });
+        server.createContext("/v1/models", exchange -> {
+            modelsAuthorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            byte[] body = """
+                    {"object":"list","data":[
+                      {"id":"Telegram_Bot","object":"model","owned_by":"combo"},
+                      {"id":"test-provider/test-model","object":"model","owned_by":"test-provider"},
+                      {"id":"backup-combo","object":"model","owned_by":"combo"}
+                    ]}
+                    """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            try (var output = exchange.getResponseBody()) {
+                output.write(body);
+            }
+        });
+        server.start();
+
+        NineRouterClient client = new NineRouterClient(
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/v1",
+                "test-secret",
+                "Telegram_Bot",
+                10,
+                new ObjectMapper()
+        );
+
+        IOException exception = assertThrows(
+                IOException.class,
+                () -> client.answer("Pertanyaan", "Konteks")
+        );
+
+        assertEquals("Bearer test-secret", modelsAuthorization.get());
+        assertTrue(exception.getMessage().contains("model_in_catalog=true"));
+        assertTrue(exception.getMessage().contains("combo_count=2"));
+    }
+
+    @Test
+    void reportsWhenConfiguredComboIsMissingFromCloudModelCatalog() throws Exception {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            exchange.sendResponseHeaders(404, -1);
+            exchange.close();
+        });
+        server.createContext("/v1/models", exchange -> {
+            byte[] body = """
+                    {"object":"list","data":[
+                      {"id":"backup-combo","object":"model","owned_by":"combo"}
+                    ]}
+                    """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            try (var output = exchange.getResponseBody()) {
+                output.write(body);
+            }
+        });
+        server.start();
+
+        NineRouterClient client = new NineRouterClient(
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/v1",
+                "test-secret",
+                "Telegram_Bot",
+                10,
+                new ObjectMapper()
+        );
+
+        IOException exception = assertThrows(
+                IOException.class,
+                () -> client.answer("Pertanyaan", "Konteks")
+        );
+
+        assertTrue(exception.getMessage().contains("model_in_catalog=false"));
+        assertTrue(exception.getMessage().contains("combo_count=1"));
+    }
+
+    @Test
     void extractsTextPartsFromJsonArrayContent() throws Exception {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/chat/completions", exchange -> {
