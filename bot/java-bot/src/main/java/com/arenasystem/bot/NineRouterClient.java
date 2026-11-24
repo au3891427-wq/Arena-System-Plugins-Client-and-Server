@@ -65,7 +65,9 @@ public final class NineRouterClient {
         ObjectNode payload = mapper.createObjectNode()
                 .put("model", model)
                 .put("max_tokens", 1200)
-                .put("stream", false);
+                // The public 9Router cloud endpoint may return SSE even when stream=false.
+                // Request streaming explicitly and parse the completed SSE response below.
+                .put("stream", true);
 
         ArrayNode messages = payload.putArray("messages");
         messages.addObject()
@@ -92,7 +94,7 @@ public final class NineRouterClient {
                 .timeout(Duration.ofSeconds(timeoutSeconds))
                 .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", "application/json")
-                .header("Accept", "application/json")
+                .header("Accept", "text/event-stream, application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(
                         mapper.writeValueAsString(payload),
                         StandardCharsets.UTF_8
@@ -108,23 +110,80 @@ public final class NineRouterClient {
             throw new IOException("9Router returned HTTP " + response.statusCode() + ".");
         }
 
-        JsonNode responseBody;
-        try {
-            responseBody = mapper.readTree(response.body());
-        } catch (Exception exception) {
-            throw new IOException("9Router returned invalid JSON.", exception);
-        }
-
-        JsonNode choices = responseBody.path("choices");
-        if (!choices.isArray() || choices.isEmpty()) {
-            throw new IOException("9Router response did not contain a completion choice.");
-        }
-
-        String content = extractContent(choices.get(0).path("message").path("content"));
+        String content = extractCompletion(response.body());
         if (content.isBlank()) {
             throw new IOException("9Router returned an empty answer.");
         }
         return content;
+    }
+
+    private String extractCompletion(String responseBody) throws IOException {
+        if (responseBody == null || responseBody.isBlank()) {
+            throw new IOException("9Router returned an empty response.");
+        }
+
+        // Keep compatibility with OpenAI-compatible gateways that still answer with JSON.
+        try {
+            JsonNode json = mapper.readTree(responseBody);
+            if (json != null && !json.isMissingNode()) {
+                JsonNode choices = json.path("choices");
+                if (!choices.isArray() || choices.isEmpty()) {
+                    throw new IOException("9Router response did not contain a completion choice.");
+                }
+                return extractContent(choices.get(0).path("message").path("content"));
+            }
+        } catch (IOException exception) {
+            if ("9Router response did not contain a completion choice.".equals(exception.getMessage())) {
+                throw exception;
+            }
+            // A streaming response is a sequence of SSE data records, not one JSON document.
+        }
+
+        return extractSseContent(responseBody);
+    }
+
+    private String extractSseContent(String responseBody) throws IOException {
+        StringBuilder answer = new StringBuilder();
+        boolean foundDataRecord = false;
+
+        for (String rawLine : responseBody.split("\\R")) {
+            String line = rawLine.strip();
+            if (!line.startsWith("data:")) {
+                continue;
+            }
+
+            String data = line.substring("data:".length()).strip();
+            if (data.isEmpty() || "[DONE]".equals(data)) {
+                continue;
+            }
+
+            foundDataRecord = true;
+            final JsonNode event;
+            try {
+                event = mapper.readTree(data);
+            } catch (Exception exception) {
+                throw new IOException("9Router returned malformed streaming data.", exception);
+            }
+
+            JsonNode choices = event.path("choices");
+            if (!choices.isArray() || choices.isEmpty()) {
+                continue;
+            }
+
+            JsonNode choice = choices.get(0);
+            JsonNode deltaContent = choice.path("delta").path("content");
+            String chunk = extractContent(deltaContent);
+            if (chunk.isEmpty()) {
+                // Some compatible gateways send a complete message object in an SSE event.
+                chunk = extractContent(choice.path("message").path("content"));
+            }
+            answer.append(chunk);
+        }
+
+        if (!foundDataRecord) {
+            throw new IOException("9Router returned neither JSON nor a valid streaming response.");
+        }
+        return answer.toString().trim();
     }
 
     private static String extractContent(JsonNode content) {
@@ -132,7 +191,7 @@ public final class NineRouterClient {
             return "";
         }
         if (content.isTextual()) {
-            return content.asText().trim();
+            return content.asText();
         }
         if (content.isArray()) {
             StringBuilder text = new StringBuilder();
@@ -143,7 +202,7 @@ public final class NineRouterClient {
                     text.append(item.path("text").asText());
                 }
             }
-            return text.toString().trim();
+            return text.toString();
         }
         return "";
     }
