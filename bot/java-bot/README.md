@@ -1,13 +1,13 @@
 # ArenaSystem Telegram Bot — Java Edition
 
-A Java 21 Telegram bot with a local, retrieval-based ArenaSystem assistant. It does not call OpenAI, Gemini, or any external LLM API.
+A Java 21 Telegram bot with a retrieval-grounded ArenaSystem assistant. It uses local BM25 search and optionally 9Router through an OpenAI-compatible API.
 
 ## What it does
 
 - /start opens the Telegram menu.
 - /latest shows the newest published stable GitHub Release that contains an uploaded JAR.
 - /downloads lists JAR assets and provides direct download buttons.
-- /ask <question> searches the local ArenaSystem knowledge base using BM25 ranking and deterministic response composition.
+- /ask <question> searches the local ArenaSystem knowledge base using BM25, then can generate an Indonesian answer through the OpenAI-compatible 9Router API.
 - Private chats can send questions directly; in group topics use /ask <question> or reply to a bot message.
 - /reset clears the user's short conversation context.
 - /privacy describes local processing and in-memory context.
@@ -19,13 +19,13 @@ A Java 21 Telegram bot with a local, retrieval-based ArenaSystem assistant. It d
 
 Semua jawaban dari fitur /ask disusun dalam Bahasa Indonesia. Pertanyaan berbahasa Inggris tetap dapat dikenali melalui kamus sinonim, tetapi konten jawaban tetap diambil dari basis pengetahuan berbahasa Indonesia. Nama teknologi dan istilah teknis resmi (misalnya Paper, Fabric, HTTPS, SHA-256, dan GitHub Releases) dipertahankan.
 
-## What "local assistant" means
+## How the assistant works
 
-This is a retrieval-based support assistant, not a locally trained large language model and not a generative ChatGPT replacement. It tokenizes Indonesian/English questions, expands a small synonym dictionary, ranks verified knowledge sections with BM25, and composes an answer from the best matching sections.
+The bot first searches verified ArenaSystem knowledge sections locally with BM25. When 9Router is configured, the retrieved context and user question are sent to the OpenAI-compatible 9Router chat-completions endpoint to generate a natural Indonesian answer. The system prompt instructs the model not to invent ArenaSystem-specific details that are absent from the knowledge base.
 
-It is deliberately conservative: when the knowledge base does not support an answer (for example, undocumented class damage values or exact compatibility), it says the information is not documented instead of inventing details.
+If 9Router is not configured or temporarily unavailable, the bot falls back to the local BM25 answer. The local search remains the factual grounding layer; it is not itself a generative language model.
 
-Telegram updates are processed by the Java service. Questions are not sent to an external AI provider. GitHub Releases API is still used for release/download commands.
+When 9Router is enabled, questions and the matching documentation context are sent to 9Router and processed according to the selected model/provider's policies. Do not send passwords, API keys, or other secrets. GitHub Releases API is still used for release/download commands.
 
 ## Runtime and build
 
@@ -70,6 +70,10 @@ Optional variables:
 | TELEGRAM_ALLOWED_CHAT_IDS | empty | Comma-separated chat allowlist; empty allows all chats |
 | RELEASE_MONITOR_STATE_FILE | `data/release-monitor-state.json` | Persistent JSON state. On Railway, set `/data/release-monitor-state.json` and mount a persistent volume at `/data`. |
 | RELEASE_MONITOR_INTERVAL_SECONDS | `60` | Release polling interval in seconds (30–3600). |
+| NINEROUTER_BASE_URL | `https://9router.com/v1` | OpenAI-compatible 9Router API base URL. |
+| NINEROUTER_API_KEY | empty | Secret 9Router API key. Keep it in Railway Variables, never in Git. |
+| NINEROUTER_MODEL | empty | Exact model ID from the 9Router model list. Must be set together with the API key. |
+| NINEROUTER_TIMEOUT_SECONDS | `45` | 9Router request timeout (5–120 seconds). |
 | PORT | Railway-provided | HTTP listener port |
 
 The service serves GET /healthz, POST /telegram/webhook, and (when `ANNOUNCEMENT_API_KEY` is configured) POST `/api/announcement`. Manual announcement requests use `Authorization: Bearer <ANNOUNCEMENT_API_KEY>`, `Content-Type: application/json`, and a JSON body such as `{"text":"📢 Pengumuman ArenaSystem\\n\\nVersi terbaru sudah tersedia."}`. The endpoint accepts only the message text; it always uses the group/topic configured with `/setreleasechannel`, applies a 3,900-character limit and a rate limit of five requests per minute, and returns only after Telegram confirms the send. Never commit or share the API key. Attach a Railway persistent volume at `/data` and set `RELEASE_MONITOR_STATE_FILE=/data/release-monitor-state.json` before relying on the monitor in production. After deployment, run `/setreleasechannel` as a group administrator inside the forum topic that should receive asset announcements. The bot must be an administrator in that group so it can verify the caller's administrator status. Railway should route the public domain to the container's PORT.
@@ -86,8 +90,8 @@ Edit src/main/resources/knowledge/arenasystem.md only with information confirmed
 
 ## Privacy and limits
 
-- Search and answer composition run locally within the Java process.
-- No user question is sent to an external LLM service.
+- BM25 knowledge retrieval runs locally within the Java process. If 9Router is enabled, the user question and retrieved context are sent to 9Router over HTTPS for answer generation.
+- If NINEROUTER_API_KEY or NINEROUTER_MODEL is unset, the bot uses local BM25 responses only. If a 9Router request fails, it falls back to the local answer.
 - A short previous question/answer is kept in process memory for up to 30 minutes of inactivity to support simple follow-ups; /reset clears it.
 - Memory is lost when the service restarts.
 - The bot limits each user to 5 assistant requests per minute and the whole service to 40 per minute.
