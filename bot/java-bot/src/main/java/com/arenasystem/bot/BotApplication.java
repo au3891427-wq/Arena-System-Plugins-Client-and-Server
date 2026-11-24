@@ -49,6 +49,7 @@ public final class BotApplication {
     private final ReleaseService releases;
     private final ReleaseMonitor releaseMonitor;
     private final LocalAssistant assistant = new LocalAssistant();
+    private final NineRouterClient nineRouter;
     private final HttpServer server;
     private final ExecutorService httpExecutor = Executors.newVirtualThreadPerTaskExecutor();
     private final ExecutorService requestExecutor = Executors.newVirtualThreadPerTaskExecutor();
@@ -61,6 +62,15 @@ public final class BotApplication {
 
     private BotApplication(AppConfig config) throws IOException {
         this.config = config;
+        this.nineRouter = config.nineRouterEnabled()
+                ? new NineRouterClient(
+                        config.nineRouterBaseUrl(),
+                        config.nineRouterApiKey(),
+                        config.nineRouterModel(),
+                        config.nineRouterTimeoutSeconds(),
+                        mapper
+                )
+                : null;
         this.telegram = new TelegramApi(config.telegramBotToken(), mapper);
         this.releases = new ReleaseService(config.githubRepository(), mapper);
         this.releaseMonitor = new ReleaseMonitor(
@@ -87,6 +97,12 @@ public final class BotApplication {
     private void start() {
         server.start();
         LOGGER.log(System.Logger.Level.INFO, "ArenaSystem Java bot listening on port " + config.port());
+        if (config.nineRouterEnabled()) {
+            LOGGER.log(System.Logger.Level.INFO, "9Router AI assistant enabled.");
+        } else {
+            LOGGER.log(System.Logger.Level.WARNING,
+                    "9Router is not configured; /ask is using local BM25 answers.");
+        }
 
         try {
             telegram.registerCommands();
@@ -129,7 +145,8 @@ public final class BotApplication {
                 .put("status", "ok")
                 .put("service", "arenasystem-telegram-bot")
                 .put("language", "Java 21")
-                .put("assistant", "local-bm25")
+                .put("assistant", config.nineRouterEnabled() ? "9router+bm25" : "local-bm25")
+                .put("ai_enabled", config.nineRouterEnabled())
                 .put("announcement_api_enabled", !config.announcementApiKey().isBlank());
         sendHttp(exchange, 200, mapper.writeValueAsString(status),
                 "application/json; charset=utf-8");
@@ -439,8 +456,29 @@ public final class BotApplication {
             return;
         }
         telegram.sendChatAction(chatId, "typing", threadId);
-        String answer = assistant.answer(conversationKey(chatId, userId, threadId), question);
+        String localAnswer = assistant.answer(conversationKey(chatId, userId, threadId), question);
+        String answer = localAnswer;
+        if (nineRouter != null) {
+            try {
+                answer = nineRouter.answer(question, localAnswer);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                LOGGER.log(System.Logger.Level.WARNING,
+                        "9Router request was interrupted; using local BM25 answer.");
+                answer = aiFallbackAnswer(localAnswer);
+            } catch (Exception exception) {
+                LOGGER.log(System.Logger.Level.WARNING,
+                        "9Router request failed; using local BM25 answer: " +
+                                exception.getClass().getSimpleName());
+                answer = aiFallbackAnswer(localAnswer);
+            }
+        }
         reply(chatId, answer, threadId, null);
+    }
+
+    private static String aiFallbackAnswer(String localAnswer) {
+        return "⚠️ Layanan AI 9Router sedang tidak tersedia. Berikut hasil pencarian dokumentasi lokal:\n\n" +
+                localAnswer;
     }
 
     private void handleCallback(JsonNode callback) throws Exception {
@@ -612,11 +650,13 @@ public final class BotApplication {
     }
 
     private String privacyText() {
+        String aiProcessing = config.nineRouterEnabled()
+                ? "Pertanyaan /ask dikirim ke 9Router melalui HTTPS bersama hasil pencarian dokumentasi lokal. Pemrosesan selanjutnya mengikuti model/provider yang dipilih di akun 9Router."
+                : "Pertanyaan diproses secara lokal menggunakan mesin pencarian dokumentasi BM25. 9Router belum dikonfigurasi.";
         return String.join("\n",
                 "🔒 PRIVASI",
                 "",
-                "Pertanyaan diproses oleh mesin pencarian dokumentasi lokal berbasis Java (BM25).",
-                "Bot tidak mengirim pertanyaan ke OpenAI, Gemini, atau layanan model AI eksternal.",
+                aiProcessing,
                 "Konteks percakapan singkat disimpan di memori proses hingga 30 menit tanpa aktivitas dan dapat dihapus dengan /reset.",
                 "Konteks hilang saat layanan dimulai ulang.",
                 "Untuk fitur rilis dan unduhan, bot mengakses GitHub Releases API.",
