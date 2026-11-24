@@ -106,8 +106,7 @@ public final class NineRouterClient {
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
         );
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            // Do not include upstream response bodies: gateways may echo private request data.
-            throw new IOException("9Router returned HTTP " + response.statusCode() + ".");
+            throw new IOException(formatHttpError(response));
         }
 
         String content = extractCompletion(response.body());
@@ -115,6 +114,56 @@ public final class NineRouterClient {
             throw new IOException("9Router returned an empty answer.");
         }
         return content;
+    }
+
+    private String formatHttpError(HttpResponse<String> response) {
+        String details = safeErrorDetails(response.body());
+        return "9Router returned HTTP " + response.statusCode()
+                + (details.isBlank() ? "." : " (" + details + ").");
+    }
+
+    /**
+     * Extracts only known, low-risk error fields. Arbitrary upstream messages are discarded
+     * because they can contain echoed prompts, credentials, or other request data.
+     */
+    private String safeErrorDetails(String responseBody) {
+        if (responseBody == null || responseBody.isBlank()) {
+            return "";
+        }
+
+        try {
+            JsonNode root = mapper.readTree(responseBody);
+            JsonNode error = root.path("error");
+            if (!error.isObject()) {
+                error = root;
+            }
+
+            String code = error.path("code").asText("");
+            if (!code.matches("[A-Za-z0-9_.-]{1,80}")) {
+                code = "";
+            }
+
+            String message = error.path("message").asText("").trim();
+            String safeMessage = "";
+            if (message.matches("(?i)The model [A-Za-z0-9._:/-]{1,100} does not exist\\.?")) {
+                safeMessage = message;
+            } else if (message.matches("(?i)Unknown model: [A-Za-z0-9._:/-]{1,100}")) {
+                safeMessage = message;
+            } else if (message.matches("(?i)No active credentials for provider: [A-Za-z0-9._-]{1,80}")) {
+                safeMessage = message;
+            } else if (message.matches("(?i)Invalid API key\\.?")
+                    || message.matches("(?i)Invalid API key or access token\\.?")
+                    || message.matches("(?i)Unauthorized\\.?")) {
+                safeMessage = message;
+            }
+
+            if (!code.isBlank()) {
+                return code + (safeMessage.isBlank() ? "" : ": " + safeMessage);
+            }
+            return safeMessage;
+        } catch (Exception ignored) {
+            return "";
+        }
     }
 
     private String extractCompletion(String responseBody) throws IOException {
