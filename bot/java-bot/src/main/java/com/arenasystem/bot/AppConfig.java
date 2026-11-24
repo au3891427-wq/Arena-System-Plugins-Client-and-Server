@@ -14,10 +14,14 @@ public record AppConfig(
         String announcementApiKey,
         Set<String> allowedChatIds,
         String releaseMonitorStateFile,
-        int releaseMonitorIntervalSeconds
+        int releaseMonitorIntervalSeconds,
+        String nineRouterBaseUrl,
+        String nineRouterApiKey,
+        String nineRouterModel,
+        int nineRouterTimeoutSeconds
 ) {
     public static AppConfig fromEnvironment() {
-        int port = parsePort(System.getenv().getOrDefault("PORT", "8080"));
+        int port = parsePort(value("PORT", "8080"));
         String token = value("TELEGRAM_BOT_TOKEN", "");
         String secret = value("TELEGRAM_WEBHOOK_SECRET", "");
         String publicUrl = value("PUBLIC_BASE_URL", "").replaceAll("/+$", "");
@@ -33,6 +37,15 @@ public record AppConfig(
         int releaseMonitorIntervalSeconds = parseReleaseMonitorInterval(
                 value("RELEASE_MONITOR_INTERVAL_SECONDS", "60")
         );
+        String nineRouterBaseUrl = value(
+                "NINEROUTER_BASE_URL",
+                "https://9router.com/v1"
+        ).replaceAll("/+$", "");
+        String nineRouterApiKey = value("NINEROUTER_API_KEY", "");
+        String nineRouterModel = value("NINEROUTER_MODEL", "");
+        int nineRouterTimeoutSeconds = parseNineRouterTimeout(
+                value("NINEROUTER_TIMEOUT_SECONDS", "45")
+        );
         Set<String> allowedIds = Arrays.stream(
                         value("TELEGRAM_ALLOWED_CHAT_IDS", "").split(",")
                 )
@@ -41,11 +54,26 @@ public record AppConfig(
                 .collect(Collectors.toUnmodifiableSet());
 
         AppConfig config = new AppConfig(
-                port, token, secret, publicUrl, repository, announcementApiKey, allowedIds,
-                releaseStateFile, releaseMonitorIntervalSeconds
+                port,
+                token,
+                secret,
+                publicUrl,
+                repository,
+                announcementApiKey,
+                allowedIds,
+                releaseStateFile,
+                releaseMonitorIntervalSeconds,
+                nineRouterBaseUrl,
+                nineRouterApiKey,
+                nineRouterModel,
+                nineRouterTimeoutSeconds
         );
         config.validate();
         return config;
+    }
+
+    public boolean nineRouterEnabled() {
+        return !nineRouterApiKey.isBlank() && !nineRouterModel.isBlank();
     }
 
     private static String value(String name, String fallback) {
@@ -65,6 +93,23 @@ public record AppConfig(
         } catch (NumberFormatException exception) {
             throw new IllegalArgumentException(
                     "RELEASE_MONITOR_INTERVAL_SECONDS must be a valid integer.",
+                    exception
+            );
+        }
+    }
+
+    private static int parseNineRouterTimeout(String raw) {
+        try {
+            int parsed = Integer.parseInt(raw);
+            if (parsed < 5 || parsed > 120) {
+                throw new IllegalArgumentException(
+                        "NINEROUTER_TIMEOUT_SECONDS must be between 5 and 120."
+                );
+            }
+            return parsed;
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException(
+                    "NINEROUTER_TIMEOUT_SECONDS must be a valid integer.",
                     exception
             );
         }
@@ -110,6 +155,40 @@ public record AppConfig(
         }
         if (releaseMonitorStateFile.isBlank()) {
             throw new IllegalArgumentException("RELEASE_MONITOR_STATE_FILE must not be blank.");
+        }
+
+        if (nineRouterApiKey.isBlank() != nineRouterModel.isBlank()) {
+            throw new IllegalArgumentException(
+                    "NINEROUTER_API_KEY and NINEROUTER_MODEL must either both be set or both be empty."
+            );
+        }
+        validateNineRouterBaseUrl();
+    }
+
+    private void validateNineRouterBaseUrl() {
+        URI uri;
+        try {
+            uri = URI.create(nineRouterBaseUrl);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("NINEROUTER_BASE_URL must be a valid URL.", exception);
+        }
+
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
+        String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase();
+        boolean secure = "https".equals(scheme);
+        boolean local = "http".equals(scheme)
+                && (host.equals("localhost") || host.equals("127.0.0.1") || host.equals("::1"));
+        boolean railwayPrivate = "http".equals(scheme) && host.endsWith(".railway.internal");
+
+        if ((!secure && !local && !railwayPrivate) || host.isBlank()) {
+            throw new IllegalArgumentException(
+                    "NINEROUTER_BASE_URL must use HTTPS (HTTP is allowed only for localhost or Railway private networking)."
+            );
+        }
+        if (uri.getQuery() != null || uri.getFragment() != null) {
+            throw new IllegalArgumentException(
+                    "NINEROUTER_BASE_URL must not contain a query string or fragment."
+            );
         }
     }
 }
