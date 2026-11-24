@@ -49,10 +49,15 @@ class LocalAssistantTest {
         String key = "test-chat:user:topic-42";
 
         assistant.answer(key, "Apa itu ArenaSystem?");
+        String followUpWithContext = assistant.answer(key, "Bagaimana dengan itu?");
+        assertTrue(followUpWithContext.contains("Berdasarkan dokumentasi ArenaSystem"),
+                followUpWithContext);
+
         assistant.reset(key);
 
-        String followUp = assistant.answer(key, "Bagaimana cara memasangnya?");
-        assertTrue(followUp.contains("belum menemukan informasi yang cukup"), followUp);
+        String followUpAfterReset = assistant.answer(key, "Bagaimana dengan itu?");
+        assertTrue(followUpAfterReset.contains("belum menemukan informasi yang cukup"),
+                followUpAfterReset);
     }
 
     @Test
