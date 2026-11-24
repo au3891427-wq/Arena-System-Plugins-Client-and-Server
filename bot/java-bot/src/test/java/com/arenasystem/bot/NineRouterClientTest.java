@@ -1,5 +1,6 @@
 package com.arenasystem.bot;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
@@ -11,8 +12,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NineRouterClientTest {
     private HttpServer server;
@@ -25,18 +26,25 @@ class NineRouterClientTest {
     }
 
     @Test
-    void sendsOpenAiCompatibleRequestAndExtractsAnswer() throws Exception {
+    void sendsStreamingOpenAiRequestAndExtractsSseAnswer() throws Exception {
         AtomicReference<String> authorization = new AtomicReference<>();
+        AtomicReference<String> accept = new AtomicReference<>();
         AtomicReference<String> requestBody = new AtomicReference<>();
 
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/chat/completions", exchange -> {
             authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            accept.set(exchange.getRequestHeaders().getFirst("Accept"));
             requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             byte[] body = """
-                    {"choices":[{"message":{"role":"assistant","content":"Halo dari 9Router."}}]}
+                    data: {"id":"chatcmpl-test","choices":[{"index":0,"delta":{"content":"Halo "}}]}
+
+                    data: {"id":"chatcmpl-test","choices":[{"index":0,"delta":{"content":"dari 9Router."}}]}
+
+                    data: [DONE]
+
                     """.getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
             exchange.sendResponseHeaders(200, body.length);
             try (var output = exchange.getResponseBody()) {
                 output.write(body);
@@ -48,7 +56,7 @@ class NineRouterClientTest {
         NineRouterClient client = new NineRouterClient(
                 baseUrl,
                 "test-secret",
-                "test-model",
+                "Telegram_Bot",
                 10,
                 new ObjectMapper()
         );
@@ -57,7 +65,10 @@ class NineRouterClientTest {
 
         assertEquals("Halo dari 9Router.", answer);
         assertEquals("Bearer test-secret", authorization.get());
-        assertTrue(requestBody.get().contains("\"model\":\"test-model\""));
+        assertTrue(accept.get().contains("text/event-stream"));
+        JsonNode requestJson = new ObjectMapper().readTree(requestBody.get());
+        assertEquals("Telegram_Bot", requestJson.path("model").asText());
+        assertTrue(requestJson.path("stream").asBoolean());
         assertTrue(requestBody.get().contains("Apa itu ArenaSystem?"));
         assertTrue(requestBody.get().contains("Konteks dokumentasi."));
     }
@@ -77,7 +88,7 @@ class NineRouterClientTest {
         NineRouterClient client = new NineRouterClient(
                 "http://127.0.0.1:" + server.getAddress().getPort() + "/v1",
                 "test-secret",
-                "test-model",
+                "Telegram_Bot",
                 10,
                 new ObjectMapper()
         );
@@ -91,7 +102,7 @@ class NineRouterClientTest {
     }
 
     @Test
-    void extractsTextPartsFromArrayContent() throws Exception {
+    void extractsTextPartsFromJsonArrayContent() throws Exception {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/chat/completions", exchange -> {
             byte[] body = """
@@ -108,7 +119,7 @@ class NineRouterClientTest {
         NineRouterClient client = new NineRouterClient(
                 "http://127.0.0.1:" + server.getAddress().getPort() + "/v1",
                 "test-secret",
-                "test-model",
+                "Telegram_Bot",
                 10,
                 new ObjectMapper()
         );
