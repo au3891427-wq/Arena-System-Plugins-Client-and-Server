@@ -128,7 +128,8 @@ class NineRouterClientTest {
                 () -> client.answer("Pertanyaan", "Konteks")
         );
         assertEquals(
-                "9Router returned HTTP 404 (model_not_found: The model Telegram_Bot does not exist.).",
+                "9Router returned HTTP 404 (model_not_found: The model Telegram_Bot does not exist.) " +
+                        "(model_catalog_http_status=404).",
                 exception.getMessage()
         );
     }
