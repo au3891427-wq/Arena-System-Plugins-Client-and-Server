@@ -72,13 +72,18 @@ public final class NineRouterClient {
                 .put("role", "system")
                 .put("content", SYSTEM_PROMPT);
 
+        String context = knowledgeContext == null ? "" : knowledgeContext;
+        context = context.replace(
+                "\\n\\nCatatan: Aku menggunakan pencarian dokumentasi lokal, bukan model generatif. Jika detailnya belum terdokumentasi, aku tidak akan menebaknya.",
+                ""
+        );
         String userContent = """
                 Pertanyaan pengguna:
                 %s
 
                 Hasil pencarian dokumentasi lokal ArenaSystem:
                 %s
-                """.formatted(question, knowledgeContext == null ? "" : knowledgeContext);
+                """.formatted(question, context);
         messages.addObject()
                 .put("role", "user")
                 .put("content", userContent);
