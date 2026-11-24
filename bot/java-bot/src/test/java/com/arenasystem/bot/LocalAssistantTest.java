@@ -2,6 +2,7 @@ package com.arenasystem.bot;
 
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LocalAssistantTest {
@@ -75,5 +76,44 @@ class LocalAssistantTest {
         String answer = assistant.answer("test-chat:user:main", "Apa resep membuat rendang?");
 
         assertTrue(answer.contains("belum menemukan informasi yang cukup"), answer);
+    }
+
+    @Test
+    void installationPhrasingRetrievesInstallationAndCompatibilityGuidance() {
+        LocalAssistant assistant = new LocalAssistant();
+
+        String answer = assistant.answer(
+                "test-chat:user:installation",
+                "Cara instal ArenaSystem"
+        );
+
+        assertTrue(answer.contains("Pemasangan dan kompatibilitas"), answer);
+        assertTrue(answer.contains("Petunjuk pemasangan dan kompatibilitas versi"), answer);
+    }
+
+    @Test
+    void releaseDownloadPhrasingRetrievesStableReleaseGuidance() {
+        LocalAssistant assistant = new LocalAssistant();
+
+        String answer = assistant.answer(
+                "test-chat:user:downloads",
+                "Di mana saya mengunduh rilis stabil terbaru?"
+        );
+
+        assertTrue(answer.contains("Rilis stabil dan unduhan"), answer);
+        assertTrue(answer.contains("Halaman rilisnya tersedia"), answer);
+    }
+
+    @Test
+    void searchAliasesAreNotExposedInUserFacingAnswers() {
+        LocalAssistant assistant = new LocalAssistant();
+
+        String answer = assistant.answer(
+                "test-chat:user:hidden-aliases",
+                "Cara instal ArenaSystem"
+        );
+
+        assertFalse(answer.contains("Pertanyaan terkait:"), answer);
+        assertFalse(answer.contains("apa itu ArenaSystem"), answer);
     }
 }
