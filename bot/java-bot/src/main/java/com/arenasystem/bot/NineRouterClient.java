@@ -34,6 +34,7 @@ public final class NineRouterClient {
     private final HttpClient httpClient;
     private final ObjectMapper mapper;
     private final URI completionUri;
+    private final URI modelsUri;
     private final String apiKey;
     private final String model;
     private final int timeoutSeconds;
@@ -49,7 +50,9 @@ public final class NineRouterClient {
         this.apiKey = apiKey;
         this.model = model;
         this.timeoutSeconds = timeoutSeconds;
-        this.completionUri = URI.create(stripTrailingSlash(baseUrl) + "/chat/completions");
+        String normalizedBaseUrl = stripTrailingSlash(baseUrl);
+        this.completionUri = URI.create(normalizedBaseUrl + "/chat/completions");
+        this.modelsUri = URI.create(normalizedBaseUrl + "/models");
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(Math.min(timeoutSeconds, 10)))
                 .followRedirects(HttpClient.Redirect.NEVER)
@@ -106,7 +109,10 @@ public final class NineRouterClient {
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
         );
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IOException(formatHttpError(response));
+            String diagnostic = response.statusCode() == 404
+                    ? " (" + inspectModelCatalog() + ")"
+                    : "";
+            throw new IOException(formatHttpError(response, diagnostic));
         }
 
         String content = extractCompletion(response.body());
@@ -116,10 +122,74 @@ public final class NineRouterClient {
         return content;
     }
 
-    private String formatHttpError(HttpResponse<String> response) {
+    private String formatHttpError(HttpResponse<String> response, String additionalDiagnostic) {
         String details = safeErrorDetails(response.body());
-        return "9Router returned HTTP " + response.statusCode()
-                + (details.isBlank() ? "." : " (" + details + ").");
+        String suffix = details.isBlank() ? additionalDiagnostic
+                : " (" + details + ")" + additionalDiagnostic;
+        return "9Router returned HTTP " + response.statusCode() + suffix + ".";
+    }
+
+    /**
+     * A 404 may mean either that the configured model is absent from Cloud or that
+     * a registered Combo cannot route one of its providers. Query the same API key's
+     * model catalog to distinguish those cases without logging the upstream body.
+     */
+    private String inspectModelCatalog() {
+        HttpRequest request = HttpRequest.newBuilder(modelsUri)
+                .timeout(Duration.ofSeconds(Math.min(timeoutSeconds, 10)))
+                .header("Authorization", "Bearer " + apiKey)
+                .header("Accept", "application/json")
+                .GET()
+                .build();
+
+        final HttpResponse<String> response;
+        try {
+            response = httpClient.send(
+                    request,
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+            );
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            return "model_catalog_check=interrupted";
+        } catch (IOException exception) {
+            return "model_catalog_check=failed";
+        }
+
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            return "model_catalog_http_status=" + response.statusCode();
+        }
+
+        try {
+            JsonNode data = mapper.readTree(response.body()).path("data");
+            if (!data.isArray()) {
+                return "model_catalog_format=unexpected";
+            }
+
+            boolean modelFound = false;
+            boolean caseInsensitiveMatch = false;
+            int comboCount = 0;
+            for (JsonNode entry : data) {
+                String id = entry.path("id").asText("");
+                if (id.isBlank()) {
+                    continue;
+                }
+                if ("combo".equalsIgnoreCase(entry.path("owned_by").asText(""))) {
+                    comboCount++;
+                }
+                if (id.equals(model)) {
+                    modelFound = true;
+                } else if (id.equalsIgnoreCase(model)) {
+                    caseInsensitiveMatch = true;
+                }
+            }
+
+            return "model_in_catalog=" + modelFound
+                    + ";case_insensitive_match=" + caseInsensitiveMatch
+                    + ";combo_count=" + comboCount
+                    + ";model_count=" + data.size();
+        } catch (Exception exception) {
+            return "model_catalog_format=invalid";
+        }
     }
 
     /**
