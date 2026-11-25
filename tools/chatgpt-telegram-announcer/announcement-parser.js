@@ -62,3 +62,7 @@
     MAX_MESSAGE_LENGTH
   });
 })(typeof globalThis !== "undefined" ? globalThis : window);
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { ArenaAnnouncementParser: globalThis.ArenaAnnouncementParser };
+}
