@@ -96,16 +96,15 @@ loadLatestButton.addEventListener("click", async () => {
         const codeBlocks = Array.from(latestAssistant.querySelectorAll("pre code"))
           .map((code) => {
             const pre = code.closest("pre");
-            const languageSource = [
-              code.getAttribute("data-language"),
-              pre?.getAttribute("data-language"),
-              code.className,
-              pre?.className
-            ].filter(Boolean).join(" ");
-            const languageMatch = languageSource.match(/(?:language-|lang-)([a-z0-9_+-]+)/i);
-            const language = languageMatch
-              ? languageMatch[1].toLowerCase()
-              : (languageSource.toLowerCase().includes("json") ? "json" : "");
+            const explicitLanguage =
+              code.getAttribute("data-language") || pre?.getAttribute("data-language");
+            const classNames = [code.className, pre?.className].filter(Boolean).join(" ");
+            const languageMatch = classNames.match(/(?:language-|lang-)([a-z0-9_+-]+)/i);
+            const language = explicitLanguage
+              ? explicitLanguage.trim().toLowerCase().replace(/^language-/, "")
+              : (languageMatch
+                ? languageMatch[1].toLowerCase()
+                : (classNames.toLowerCase().includes("json") ? "json" : ""));
 
             return {
               language,
