@@ -1,34 +1,52 @@
 # ArenaSystem Telegram Announcer
 
-Chrome Extension Manifest V3 untuk memindahkan draft dari percakapan ChatGPT ke topic Telegram ArenaSystem.
+Chrome Extension Manifest V3 untuk mengirim pengumuman terstruktur dari ChatGPT ke topic Telegram ArenaSystem.
 
-## Fitur
+## Cara kerja
 
-- Mengambil teks yang sedang dipilih atau jawaban ChatGPT terakhir.
-- Mendukung domain chatgpt.com dan chat.openai.com.
-- Memiliki fallback selector untuk beberapa struktur halaman ChatGPT.
-- Mengambil seluruh isi jawaban, termasuk teks di sekitar code block.
-- Menampilkan preview yang bisa diedit.
-- Memerlukan konfirmasi eksplisit sebelum mengirim.
-- Menyimpan API key di chrome.storage.local.
-- Tidak memantau percakapan atau mengirim otomatis di latar belakang.
+- Extension hanya membaca blok kode berlabel `json` dari **pesan assistant terbaru**.
+- Isi di luar blok JSON, pesan user, dan blok kode dengan bahasa lain tidak pernah dimasukkan ke preview.
+- Harus ada tepat satu blok JSON dengan skema yang didukung. Tidak ada fallback ke seluruh jawaban atau teks yang dipilih.
+- Preview hanya mengambil properti `message`; properti lain tidak dikirim.
+- Pengiriman tetap memerlukan pemeriksaan preview dan konfirmasi eksplisit.
+- API key disimpan di `chrome.storage.local`; extension tidak memantau percakapan atau mengirim otomatis di latar belakang.
+
+## Format yang harus dibuat ChatGPT
+
+Minta ChatGPT membuat satu blok kode berlabel `json` dengan format:
+
+```json
+{
+  "type": "telegram_announcement",
+  "version": 1,
+  "message": "📢 ArenaSystem Client Update!\\n\\nChangelog:\\n- Fixed synchronization issue."
+}
+```
+
+Validasi:
+- `type` harus `telegram_announcement`.
+- `version` harus angka `1`.
+- `message` harus string tidak kosong, maksimal 3.900 karakter.
+- Tidak ada blok JSON atau ada lebih dari satu blok JSON: ekstraksi dibatalkan.
+
+Percakapan biasa tidak menghasilkan pengiriman. Hanya permintaan pengumuman Telegram yang perlu menghasilkan format tersebut.
 
 ## Instalasi
 
-1. Buka chrome://extensions di Google Chrome.
+1. Buka `chrome://extensions` di Google Chrome.
 2. Aktifkan Developer mode.
 3. Klik Load unpacked dan pilih folder ini.
 4. Isi API key di popup extension, lalu simpan.
-5. Buka percakapan ChatGPT di tab aktif, lalu klik Ambil jawaban ChatGPT.
-6. Periksa dan edit preview, lalu klik Kirim ke topic Update dan setujui konfirmasi.
+5. Buka percakapan ChatGPT di tab aktif, lalu klik **Ambil JSON pengumuman**.
+6. Periksa dan edit preview, lalu klik **Kirim ke topic Update** dan setujui konfirmasi.
 
-Pastikan Telegram bot sudah dikonfigurasi ke topic yang benar dengan menjalankan /setreleasechannel sebagai admin grup. API key hanya dikirim melalui HTTPS ke domain Railway bot yang ditetapkan di extension.
+Pastikan Telegram bot sudah dikonfigurasi ke topic yang benar dengan menjalankan `/setreleasechannel` sebagai admin grup.
 
-## API
+## API yang digunakan
 
-- Endpoint: POST /api/announcement
-- Header: Authorization: Bearer <ANNOUNCEMENT_API_KEY>
-- Header: Content-Type: application/json
-- Body: {"text":"Isi pengumuman"}
+- Endpoint: `POST https://arenasystem-telegram-bot-production.up.railway.app/api/announcement`
+- Header: `Authorization: Bearer <ANNOUNCEMENT_API_KEY>`
+- Header: `Content-Type: application/json`
+- Body: `{"text":"Isi pengumuman"}`
 
-Endpoint hanya menggunakan destination yang disimpan oleh ReleaseMonitor. API key tidak boleh dimasukkan ke repository atau dibagikan.
+Backend tetap menentukan destination dari konfigurasi `ReleaseMonitor`. API key tidak boleh dimasukkan ke repository atau dibagikan.
