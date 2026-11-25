@@ -55,7 +55,7 @@
     let searchRoot = null;
     if (assistantElement) {
       searchRoot = assistantElement.closest(
-        '[data-testid^="conversation-turn"], [data-turn-key]'
+        'article[data-turn="assistant"], [data-turn="assistant"], [data-testid^="conversation-turn"], [data-turn-key]'
       ) || assistantElement;
     } else {
       // Some ChatGPT layouts expose an explicit assistant-only Markdown node
@@ -65,7 +65,7 @@
         assistantElement = markdownElement;
         matchedSelector = markdownSelector;
         searchRoot = markdownElement.closest(
-          '[data-testid^="conversation-turn"], [data-turn-key]'
+          'article[data-turn="assistant"], [data-turn="assistant"], [data-testid^="conversation-turn"], [data-turn-key]'
         ) || markdownElement;
       }
     }
