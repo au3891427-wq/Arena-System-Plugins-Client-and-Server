@@ -97,3 +97,21 @@ test("menolak input yang bukan array", () => {
     /Daftar blok kode/
   );
 });
+
+test("menolak karakter NUL", () => {
+  assert.throws(
+    () => ArenaAnnouncementParser.parseTelegramAnnouncement([
+      jsonBlock({ ...validPayload, message: "bad\\u0000text" })
+    ]),
+    /karakter yang tidak valid/
+  );
+});
+
+test("menolak JSON root yang bukan object", () => {
+  assert.throws(
+    () => ArenaAnnouncementParser.parseTelegramAnnouncement([
+      { language: "json", text: "[]" }
+    ]),
+    /harus berupa object/
+  );
+});
