@@ -57,45 +57,12 @@ loadLatestButton.addEventListener("click", async () => {
     const results = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: () => {
-        const selectedText = window.getSelection()?.toString().trim();
-        if (selectedText) {
-          return { text: selectedText, source: "selected-text", diagnostics: null };
-        }
-
-        const normalizeText = (value) =>
-          String(value || "")
-            .replace(/\u200b/g, "")
-            .replace(/\r\n?/g, "\n")
-            .replace(/\n[ \t]*\n{2,}/g, "\n\n")
-            .trim();
-
-        const readText = (element) =>
-          normalizeText(element?.innerText || element?.textContent || "");
-
         const isVisible = (element) =>
           element instanceof HTMLElement &&
           element.getClientRects().length > 0 &&
           getComputedStyle(element).visibility !== "hidden";
 
-        // Reject UI labels that can appear in accessibility or message wrappers.
-        const isUiOnlyText = (text) => {
-          const compact = text.toLowerCase().replace(/[\s:：.!?,]+/g, "");
-          return new Set([
-            "chatgpt",
-            "chatgptsaid",
-            "chatgptsaidchatgpt",
-            "assistant",
-            "copy",
-            "edit",
-            "share",
-            "readaloud",
-            "regenerate",
-            "goodresponse",
-            "badresponse"
-          ]).has(compact);
-        };
-
-        const roleSelectors = [
+        const assistantSelectors = [
           '[data-message-author-role="assistant"]',
           '[data-conversation-role="assistant"]',
           '[data-role="assistant"]',
@@ -105,153 +72,71 @@ loadLatestButton.addEventListener("click", async () => {
           ".agent-turn"
         ];
 
-        const contentSelectors = [
-          '[data-markdown-text-style="assistant-message"]',
-          '[data-message-content]',
-          '[data-testid*="message-content"]',
-          ".markdown",
-          '[class*="markdown"]',
-          '[class*="prose"]'
-        ];
+        let assistantMessages = [];
+        let matchedSelector = "";
 
-        const counts = {};
-        const wrappers = new Set();
-
-        // Gather all possible assistant containers first. Do not return the
-        // first selector match: broad role wrappers can contain only UI labels.
-        for (const selector of roleSelectors) {
-          const nodes = Array.from(document.querySelectorAll(selector));
-          counts[selector] = nodes.length;
-          for (const node of nodes) {
-            if (isVisible(node)) wrappers.add(node);
+        for (const selector of assistantSelectors) {
+          const matches = Array.from(document.querySelectorAll(selector)).filter(isVisible);
+          if (matches.length > 0) {
+            assistantMessages = matches;
+            matchedSelector = selector;
+            break;
           }
         }
 
-        // Some ChatGPT layouts expose the assistant role inside a turn wrapper.
-        const root =
-          document.querySelector('[data-thread-find-target="conversation"]') ||
-          document.querySelector("main") ||
-          document.body;
-        const turnWrappers = Array.from(
-          root.querySelectorAll('[data-turn-key], article[data-turn], [data-testid^="conversation-turn"]')
-        );
-        counts["turn-wrappers"] = turnWrappers.length;
-
-        const assistantSelector = roleSelectors.slice(0, 6).join(", ");
-        for (const turn of turnWrappers) {
-          const assistantNode = turn.matches(assistantSelector)
-            ? turn
-            : turn.querySelector(assistantSelector);
-          if (assistantNode && isVisible(assistantNode)) wrappers.add(assistantNode);
-        }
-
-        // The explicit assistant-markdown attribute is reliable enough to
-        // inspect globally as a fallback, even when wrapper attributes change.
-        const explicitMarkdown = Array.from(
-          document.querySelectorAll('[data-markdown-text-style="assistant-message"]')
-        );
-        counts["explicit-assistant-markdown"] = explicitMarkdown.length;
-        for (const node of explicitMarkdown) {
-          if (isVisible(node)) wrappers.add(node);
-        }
-
-        const chooseContentFrom = (wrapper) => {
-          const candidates = new Map();
-
-          const addCandidate = (node, source, priority) => {
-            if (!isVisible(node)) return;
-            const text = readText(node);
-            if (!text || isUiOnlyText(text)) return;
-
-            const score = priority * 100000 + Math.min(text.length, 50000);
-            const previous = candidates.get(node);
-            if (!previous || score > previous.score) {
-              candidates.set(node, { text, source, score });
-            }
+        if (assistantMessages.length === 0) {
+          return {
+            codeBlocks: [],
+            source: "not-found",
+            diagnostic: "Pesan assistant tidak ditemukan."
           };
-
-          for (let index = 0; index < contentSelectors.length; index += 1) {
-            const selector = contentSelectors[index];
-            const priority = 100 - index * 10;
-            if (wrapper.matches(selector)) {
-              addCandidate(wrapper, selector, priority);
-            }
-            for (const node of wrapper.querySelectorAll(selector)) {
-              addCandidate(node, selector, priority);
-            }
-          }
-
-          // Last-resort fallback: use the assistant wrapper only when it
-          // contains substantive text rather than a short ChatGPT UI label.
-          addCandidate(wrapper, "assistant-wrapper", 1);
-
-          return Array.from(candidates.values()).sort((a, b) => b.score - a.score)[0] || null;
-        };
-
-        const orderedWrappers = Array.from(wrappers).sort((a, b) => {
-          const position = a.compareDocumentPosition(b);
-          if (position & 4) return -1;
-          if (position & 2) return 1;
-          return 0;
-        });
-
-        // Search from the newest assistant container backwards.
-        for (let index = orderedWrappers.length - 1; index >= 0; index -= 1) {
-          const candidate = chooseContentFrom(orderedWrappers[index]);
-          if (candidate) {
-            return {
-              text: candidate.text,
-              source: candidate.source,
-              diagnostics: counts
-            };
-          }
         }
+
+        const latestAssistant = assistantMessages[assistantMessages.length - 1];
+        const codeBlocks = Array.from(latestAssistant.querySelectorAll("pre code"))
+          .map((code) => {
+            const pre = code.closest("pre");
+            const languageSource = [
+              code.getAttribute("data-language"),
+              pre?.getAttribute("data-language"),
+              code.className,
+              pre?.className
+            ].filter(Boolean).join(" ");
+            const languageMatch = languageSource.match(/(?:language-|lang-)([a-z0-9_+-]+)/i);
+            const language = languageMatch
+              ? languageMatch[1].toLowerCase()
+              : (languageSource.toLowerCase().includes("json") ? "json" : "");
+
+            return {
+              language,
+              text: code.innerText || code.textContent || ""
+            };
+          });
 
         return {
-          text: "",
-          source: "not-found",
-          diagnostics: {
-            ...counts,
-            "document-ready-state": document.readyState,
-            "main-elements": document.querySelectorAll("main").length,
-            "page-title": document.title
-          }
+          codeBlocks,
+          source: matchedSelector,
+          diagnostic: null
         };
       }
     });
 
     const extracted = results?.[0]?.result;
-    const latestText = typeof extracted === "string" ? extracted.trim() : extracted?.text?.trim();
-    if (!latestText) {
-      const diagnosticText = extracted?.diagnostics
-        ? " Diagnostik: " + Object.entries(extracted.diagnostics)
-            .map(([key, value]) => key + "=" + value)
-            .join(", ")
-        : "";
+    if (!extracted || !Array.isArray(extracted.codeBlocks)) {
+      throw new Error("Struktur hasil ekstraksi tidak valid.");
+    }
+
+    if (extracted.codeBlocks.length === 0) {
       throw new Error(
-        "Jawaban ChatGPT belum terdeteksi pada tab aktif." +
-        " Pastikan percakapan terbuka, halaman selesai dimuat, lalu coba lagi." +
-        diagnosticText
+        extracted.diagnostic ||
+        "Tidak ditemukan blok kode JSON pada jawaban assistant terbaru. Minta ChatGPT membuat pengumuman dalam format JSON."
       );
     }
 
-    messageInput.value = latestText;
+    const announcement = ArenaAnnouncementParser.parseTelegramAnnouncement(extracted.codeBlocks);
+    messageInput.value = announcement.message;
     messageInput.dispatchEvent(new Event("input", { bubbles: true }));
-
-    const sourceNames = {
-      "selected-text": "teks yang dipilih",
-      "conversation-role": "jawaban ChatGPT (DOM terbaru)",
-      "assistant-markdown": "konten jawaban ChatGPT",
-      "message-author-role": "jawaban ChatGPT",
-      "data-role": "jawaban ChatGPT",
-      "message-author": "jawaban ChatGPT",
-      "article-turn": "jawaban ChatGPT",
-      "turn-markdown": "jawaban ChatGPT",
-      "agent-turn": "jawaban ChatGPT",
-      "assistant-in-turn-wrapper": "jawaban ChatGPT"
-    };
-    const sourceLabel = sourceNames[extracted?.source] || "jawaban ChatGPT terakhir";
-    setStatus("Berhasil mengambil " + sourceLabel + ". Periksa dan edit preview sebelum mengirim.");
+    setStatus("Berhasil mengambil JSON pengumuman. Periksa dan edit preview sebelum mengirim.");
   } catch (error) {
     const message = error?.message || String(error);
     if (message.includes("Cannot access contents of the page") || message.includes("cannot be scripted")) {
