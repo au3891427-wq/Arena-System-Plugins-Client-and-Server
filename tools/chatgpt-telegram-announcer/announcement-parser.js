@@ -50,7 +50,7 @@
     if (message.length > MAX_MESSAGE_LENGTH) {
       throw new Error("Pesan terlalu panjang. Maksimal 3.900 karakter.");
     }
-    if (message.includes("\\u0000")) {
+    if (message.includes("\u0000")) {
       throw new Error("Pesan mengandung karakter yang tidak valid.");
     }
 
