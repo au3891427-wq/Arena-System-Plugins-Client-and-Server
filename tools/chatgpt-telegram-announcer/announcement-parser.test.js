@@ -6,7 +6,7 @@ const { ArenaAnnouncementParser } = require("./announcement-parser.js");
 const validPayload = {
   type: "telegram_announcement",
   version: 1,
-  message: "📢 ArenaSystem Client Update!\\n- Fixed synchronization."
+  message: "📢 ArenaSystem Client Update!\n- Fixed synchronization."
 };
 
 function jsonBlock(payload = validPayload) {
@@ -101,7 +101,7 @@ test("menolak input yang bukan array", () => {
 test("menolak karakter NUL", () => {
   assert.throws(
     () => ArenaAnnouncementParser.parseTelegramAnnouncement([
-      jsonBlock({ ...validPayload, message: "bad\\u0000text" })
+      jsonBlock({ ...validPayload, message: "bad\u0000text" })
     ]),
     /karakter yang tidak valid/
   );
