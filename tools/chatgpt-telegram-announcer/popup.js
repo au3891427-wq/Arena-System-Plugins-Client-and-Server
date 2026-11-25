@@ -51,7 +51,7 @@ loadLatestButton.addEventListener("click", async () => {
     }
 
     if (!CHATGPT_HOSTS.has(activeUrl.hostname)) {
-      throw new Error("Tab aktif saat ini bukan ChatGPT (" + activeUrl.hostname + "). Buka chatgpt.com di tab ini, lalu klik Ambil jawaban ChatGPT lagi.");
+      throw new Error("Tab aktif saat ini bukan ChatGPT (" + activeUrl.hostname + "). Buka chatgpt.com di tab ini, lalu klik Ambil JSON pengumuman lagi.");
     }
 
     const results = await chrome.scripting.executeScript({
