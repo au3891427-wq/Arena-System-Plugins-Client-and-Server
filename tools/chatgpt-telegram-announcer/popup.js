@@ -56,68 +56,7 @@ loadLatestButton.addEventListener("click", async () => {
 
     const results = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      func: () => {
-        const isVisible = (element) =>
-          element instanceof HTMLElement &&
-          element.getClientRects().length > 0 &&
-          getComputedStyle(element).visibility !== "hidden";
-
-        const assistantSelectors = [
-          '[data-message-author-role="assistant"]',
-          '[data-conversation-role="assistant"]',
-          '[data-role="assistant"]',
-          '[data-message-author="assistant"]',
-          'article[data-turn="assistant"]',
-          '[data-turn="assistant"]',
-          ".agent-turn"
-        ];
-
-        let assistantMessages = [];
-        let matchedSelector = "";
-
-        for (const selector of assistantSelectors) {
-          const matches = Array.from(document.querySelectorAll(selector)).filter(isVisible);
-          if (matches.length > 0) {
-            assistantMessages = matches;
-            matchedSelector = selector;
-            break;
-          }
-        }
-
-        if (assistantMessages.length === 0) {
-          return {
-            codeBlocks: [],
-            source: "not-found",
-            diagnostic: "Pesan assistant tidak ditemukan."
-          };
-        }
-
-        const latestAssistant = assistantMessages[assistantMessages.length - 1];
-        const codeBlocks = Array.from(latestAssistant.querySelectorAll("pre code"))
-          .map((code) => {
-            const pre = code.closest("pre");
-            const explicitLanguage =
-              code.getAttribute("data-language") || pre?.getAttribute("data-language");
-            const classNames = [code.className, pre?.className].filter(Boolean).join(" ");
-            const languageMatch = classNames.match(/(?:language-|lang-)([a-z0-9_+-]+)/i);
-            const language = explicitLanguage
-              ? explicitLanguage.trim().toLowerCase().replace(/^language-/, "")
-              : (languageMatch
-                ? languageMatch[1].toLowerCase()
-                : (classNames.toLowerCase().includes("json") ? "json" : ""));
-
-            return {
-              language,
-              text: code.innerText || code.textContent || ""
-            };
-          });
-
-        return {
-          codeBlocks,
-          source: matchedSelector,
-          diagnostic: null
-        };
-      }
+      func: ArenaAnnouncementDomExtractor.extractLatestAssistantCodeBlocks
     });
 
     const extracted = results?.[0]?.result;
