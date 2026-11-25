@@ -155,6 +155,23 @@ test("mengabaikan code block JSON dari pesan user", () => {
   assert.match(result.diagnostic, /Pesan assistant tidak ditemukan/);
 });
 
+test("menemukan konten sibling di article bertanda assistant", () => {
+  const expected = '{"type":"telegram_announcement","version":1,"message":"uji article"}';
+  const article = new FakeElement("article", { "data-turn": "assistant" });
+  const role = new FakeElement("div", { "data-message-author-role": "assistant" });
+  const markdown = new FakeElement("div", { "data-markdown-text-style": "assistant-message" });
+  const pre = new FakeElement("pre");
+  pre.append(new FakeElement("code", { class: "hljs language-json" }, expected));
+  article.append(role, markdown.append(pre));
+  const result = ArenaAnnouncementDomExtractor.extractLatestAssistantCodeBlocks(
+    makeDocument(new FakeElement("body").append(article))
+  );
+
+  assert.equal(result.codeBlocks.length, 1);
+  assert.equal(result.codeBlocks[0].language, "json");
+  assert.equal(result.codeBlocks[0].text, expected);
+});
+
 test("menerima pre tanpa elemen code dan membaca bahasa dari atribut", () => {
   const turn = new FakeElement("div", { "data-testid": "conversation-turn-3" });
   const role = new FakeElement("div", { "data-message-author-role": "assistant" });
