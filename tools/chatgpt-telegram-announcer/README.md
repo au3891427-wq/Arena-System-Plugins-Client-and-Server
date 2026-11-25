@@ -19,7 +19,7 @@ Minta ChatGPT membuat satu blok kode berlabel `json` dengan format:
 {
   "type": "telegram_announcement",
   "version": 1,
-  "message": "📢 ArenaSystem Client Update!\\n\\nChangelog:\\n- Fixed synchronization issue."
+  "message": "📢 ArenaSystem Client Update!\n\nChangelog:\n- Fixed synchronization issue."
 }
 ```
 
