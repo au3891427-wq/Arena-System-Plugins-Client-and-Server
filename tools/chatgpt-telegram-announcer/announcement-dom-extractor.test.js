@@ -106,7 +106,7 @@ function makeDocument(body) {
 }
 
 function makeAssistantTurn({ id, message, withCode = true }) {
-  const turn = new FakeElement("div", { "data-testid": \`conversation-turn-\${id}\` });
+  const turn = new FakeElement("div", { "data-testid": `conversation-turn-${id}` });
   const role = new FakeElement("div", { "data-message-author-role": "assistant" });
   turn.append(role);
 
