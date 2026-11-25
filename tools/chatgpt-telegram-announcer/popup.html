@@ -26,17 +26,17 @@
 </head>
 <body>
   <h1>ArenaSystem Telegram Announcer</h1>
-  <p>Draft dari ChatGPT akan dikirim ke topic Telegram yang sudah diatur dengan <code>/setreleasechannel</code>.</p>
+  <p>Hanya blok JSON pengumuman dari jawaban ChatGPT terbaru yang akan dibaca. Pengiriman tetap memerlukan konfirmasi.</p>
 
   <label for="apiKey">API key</label>
   <input id="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="Tempel API key">
   <div class="row">
     <button id="saveKey" class="secondary" type="button">Simpan API key</button>
-    <button id="loadLatest" class="secondary" type="button">Ambil jawaban ChatGPT</button>
+    <button id="loadLatest" class="secondary" type="button">Ambil JSON pengumuman</button>
   </div>
 
   <label for="message">Preview pesan Telegram</label>
-  <textarea id="message" placeholder="Draft pengumuman akan muncul di sini. Kamu juga bisa mengeditnya sebelum dikirim."></textarea>
+  <textarea id="message" placeholder="Hanya properti message dari JSON valid yang akan muncul di sini."></textarea>
   <button id="send" class="primary" type="button">Kirim ke topic Update</button>
   <div id="status" role="status" aria-live="polite"></div>
   <p class="hint">Pengiriman memerlukan klik konfirmasi. Kunci disimpan di penyimpanan lokal browser, bukan di halaman ChatGPT.</p>
