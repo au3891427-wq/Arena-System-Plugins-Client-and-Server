@@ -18,7 +18,6 @@ test("mengambil hanya properti message dari satu blok JSON", () => {
     { language: "text", text: "Penjelasan panjang yang tidak boleh ikut terkirim." },
     jsonBlock()
   ]);
-
   assert.deepEqual(result, { message: validPayload.message });
 });
 
@@ -26,8 +25,32 @@ test("mendukung label bahasa language-json", () => {
   const result = ArenaAnnouncementParser.parseTelegramAnnouncement([
     { language: "language-json", text: JSON.stringify(validPayload) }
   ]);
-
   assert.equal(result.message, validPayload.message);
+});
+
+test("menerima blok tanpa metadata bahasa hanya jika skema announcement v1 cocok", () => {
+  const result = ArenaAnnouncementParser.parseTelegramAnnouncement([
+    { language: "", text: JSON.stringify(validPayload) }
+  ]);
+  assert.equal(result.message, validPayload.message);
+});
+
+test("menolak JSON biasa tanpa metadata bahasa", () => {
+  assert.throws(
+    () => ArenaAnnouncementParser.parseTelegramAnnouncement([
+      { language: "", text: '{"hello":"world"}' }
+    ]),
+    /Tidak ditemukan blok kode JSON pengumuman/
+  );
+});
+
+test("tetap menolak blok dengan bahasa eksplisit selain JSON", () => {
+  assert.throws(
+    () => ArenaAnnouncementParser.parseTelegramAnnouncement([
+      { language: "javascript", text: JSON.stringify(validPayload) }
+    ]),
+    /Tidak ditemukan blok kode JSON pengumuman/
+  );
 });
 
 test("menolak jika tidak ada blok JSON", () => {
@@ -35,15 +58,22 @@ test("menolak jika tidak ada blok JSON", () => {
     () => ArenaAnnouncementParser.parseTelegramAnnouncement([
       { language: "javascript", text: "console.log('not an announcement')" }
     ]),
-    /Tidak ditemukan blok kode/
+    /Tidak ditemukan blok kode JSON pengumuman/
   );
 });
 
-test("menolak lebih dari satu blok JSON", () => {
+test("menolak lebih dari satu blok JSON/pengumuman", () => {
   assert.throws(
     () => ArenaAnnouncementParser.parseTelegramAnnouncement([
       jsonBlock(),
       jsonBlock()
+    ]),
+    /lebih dari satu blok JSON/
+  );
+  assert.throws(
+    () => ArenaAnnouncementParser.parseTelegramAnnouncement([
+      jsonBlock(),
+      { language: "", text: JSON.stringify(validPayload) }
     ]),
     /lebih dari satu blok JSON/
   );
@@ -82,7 +112,6 @@ test("menolak message kosong, bukan string, atau terlalu panjang", () => {
       /message/
     );
   }
-
   assert.throws(
     () => ArenaAnnouncementParser.parseTelegramAnnouncement([
       jsonBlock({ ...validPayload, message: "x".repeat(3901) })
