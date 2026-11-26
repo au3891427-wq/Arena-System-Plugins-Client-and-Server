@@ -10,25 +10,53 @@
       .replace(/^(?:language-|lang-)/, "");
   }
 
+  function parseJson(text) {
+    try {
+      return JSON.parse(String(text ?? ""));
+    } catch {
+      return null;
+    }
+  }
+
+  function isAnnouncementPayload(payload) {
+    return Boolean(
+      payload &&
+      typeof payload === "object" &&
+      !Array.isArray(payload) &&
+      payload.type === "telegram_announcement" &&
+      payload.version === 1 &&
+      typeof payload.message === "string"
+    );
+  }
+
   function parseTelegramAnnouncement(codeBlocks) {
     if (!Array.isArray(codeBlocks)) {
       throw new TypeError("Daftar blok kode tidak valid.");
     }
 
-    const jsonBlocks = codeBlocks.filter((block) =>
+    const explicitJsonBlocks = codeBlocks.filter((block) =>
       block && normalizeLanguage(block.language) === "json"
     );
+    const unlabelledAnnouncementBlocks = codeBlocks.filter((block) => {
+      if (!block || normalizeLanguage(block.language) !== "") return false;
+      return isAnnouncementPayload(parseJson(block.text));
+    });
 
-    if (jsonBlocks.length === 0) {
-      throw new Error("Tidak ditemukan blok kode dengan bahasa JSON.");
+    // ChatGPT's current code viewer can omit the fence language from its DOM.
+    // In that case, accept an unlabelled block only when its parsed JSON has
+    // the exact announcement discriminator and supported version.
+    const candidates = [...explicitJsonBlocks, ...unlabelledAnnouncementBlocks];
+
+    if (candidates.length === 0) {
+      throw new Error("Tidak ditemukan blok kode JSON pengumuman. Pastikan blok memakai label json atau skema telegram_announcement v1.");
     }
-    if (jsonBlocks.length > 1) {
+    if (candidates.length > 1) {
       throw new Error("Ditemukan lebih dari satu blok JSON. Sisakan satu blok pengumuman saja.");
     }
 
     let payload;
     try {
-      payload = JSON.parse(String(jsonBlocks[0].text ?? ""));
+      payload = JSON.parse(String(candidates[0].text ?? ""));
     } catch {
       throw new Error("Isi blok JSON tidak valid. Periksa sintaks JSON pengumuman.");
     }
