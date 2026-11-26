@@ -50,13 +50,28 @@
       }
     }
 
-    // A role marker can sit on a wrapper that does not contain the rendered
-    // Markdown node. Resolve the containing conversation turn before searching.
+    // ChatGPT may put the assistant role marker on a hidden accessibility heading
+    // (for example, an H4) next to the rendered Markdown message. Walk upward
+    // only from that marker and stop at the nearest container holding the
+    // assistant-specific Markdown node. Never widen the search to the whole page.
+    const findNearestAssistantContentRoot = (element) => {
+      for (let current = element, depth = 0;
+        current && current !== documentRef.body && depth < 8;
+        current = current.parentElement, depth += 1) {
+        if (current.matches?.(markdownSelector) && isVisible(current)) return current;
+        if (Array.from(current.querySelectorAll(markdownSelector)).some(isVisible)) {
+          return current;
+        }
+      }
+      return null;
+    };
+
     let searchRoot = null;
     if (assistantElement) {
-      searchRoot = assistantElement.closest(
-        'article[data-turn="assistant"], [data-turn="assistant"], [data-testid^="conversation-turn"], [data-turn-key]'
-      ) || assistantElement;
+      searchRoot = findNearestAssistantContentRoot(assistantElement) ||
+        assistantElement.closest(
+          'article[data-turn="assistant"], [data-turn="assistant"], [data-testid^="conversation-turn"], [data-turn-key]'
+        ) || assistantElement;
     } else {
       // Some ChatGPT layouts expose an explicit assistant-only Markdown node
       // without an ancestor carrying one of the role attributes above.
