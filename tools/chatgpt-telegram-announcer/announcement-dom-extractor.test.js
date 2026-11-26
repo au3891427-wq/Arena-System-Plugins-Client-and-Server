@@ -155,6 +155,30 @@ test("mengabaikan code block JSON dari pesan user", () => {
   assert.match(result.diagnostic, /Pesan assistant tidak ditemukan/);
 });
 
+test("menemukan Markdown pada parent dari H4 conversation-role assistant", () => {
+  const expected = '{"type":"telegram_announcement","version":1,"message":"uji parent H4"}';
+  const messageWrapper = new FakeElement("div");
+  const accessibilityHeading = new FakeElement("h4", {
+    class: "sr-only",
+    "data-conversation-role": "assistant"
+  });
+  const markdown = new FakeElement("div", {
+    "data-markdown-text-style": "assistant-message"
+  });
+  const pre = new FakeElement("pre");
+  pre.append(new FakeElement("code", { class: "language-json" }, expected));
+  markdown.append(pre);
+  messageWrapper.append(accessibilityHeading, markdown);
+
+  const result = ArenaAnnouncementDomExtractor.extractLatestAssistantCodeBlocks(
+    makeDocument(new FakeElement("body").append(messageWrapper))
+  );
+
+  assert.equal(result.codeBlocks.length, 1);
+  assert.equal(result.codeBlocks[0].language, "json");
+  assert.equal(result.codeBlocks[0].text, expected);
+});
+
 test("menemukan konten sibling di article bertanda assistant", () => {
   const expected = '{"type":"telegram_announcement","version":1,"message":"uji article"}';
   const article = new FakeElement("article", { "data-turn": "assistant" });
